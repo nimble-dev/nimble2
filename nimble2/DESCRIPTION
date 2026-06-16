@@ -1,0 +1,21 @@
+Package: nimble2
+Type: Package
+Title: Development work on major upgrade to nimble
+Version: 0.1
+Date: 2026-06-11
+Authors@R: c(
+    person("Perry", "de Valpine", role = "aut"),
+    person("Christopher", "Paciorek", , "paciorek@stat.berkeley.edu", role = c("aut", "cre"))
+    )
+Depends:
+    R (>= 4.6.0)
+Imports:
+    R6,nCompiler,methods
+Suggests:
+    testthat
+SystemRequirements: GNU make
+Description: Development work on major upgrade to nimble
+License: BSD_3_clause
+Encoding: UTF-8
+LazyData: false
+Config/roxygen2/version: 8.0.0
