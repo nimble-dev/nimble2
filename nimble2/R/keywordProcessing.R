@@ -19,11 +19,20 @@ setupCodeTemplateClass <- setRefClass("setupCodeTemplateClass",
     makeName = "ANY",
     codeTemplate = "ANY",
     makeCodeSubList = "ANY",
-    makeOtherNames = "ANY"
+    makeOtherNames = "ANY",
+    #
+    makeFieldName = "ANY",
+    ctorCodeTemplate = "ANY",
+    makeCtorCodeSubList = "ANY",
+    makeOtherFieldNames = "ANY",
+    makeFieldTypes = "ANY"
   ),
   methods = list(
     initialize = function(...) {
       makeOtherNames <<- function(name, argList) {
+        return(character(0))
+      }
+      makeOtherFieldNames <<- function(name, argList) {
         return(character(0))
       }
       callSuper(...)
@@ -789,11 +798,11 @@ dollarSign_keywordInfo <- keywordInfoClass(
   processor = function(code, nfProc, RCfunProc) {
     callerCode <- code[[2]]
 
-    if (is.null(nfProc)) {
-      nl_fieldName <- as.character(code[[3]])
-      newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
-      return(newRunCode)
-    }
+    # if (is.null(nfProc)) {
+    #   nl_fieldName <- as.character(code[[3]])
+    #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
+    #   return(newRunCode)
+    # }
 
     doubleBracketCase <- FALSE
     if (length(callerCode) > 1) {
@@ -818,61 +827,86 @@ dollarSign_keywordInfo <- keywordInfoClass(
     #       May be a better way to do this
 
 
-    if (is.null(class) || class == "NULL") { ## assume that an element of a run-time provided nimbleList is being accessed
-      nl_fieldName <- as.character(code[[3]])
-      newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
-      return(newRunCode)
-    }
-    if (class == "symbolNimbleFunctionList") {
-      nf_fieldName <- as.character(code[[3]])
-      newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
-      return(newRunCode)
-    }
+    # if (is.null(class) || class == "NULL") { ## assume that an element of a run-time provided nimbleList is being accessed
+    #   nl_fieldName <- as.character(code[[3]])
+    #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
+    #   return(newRunCode)
+    # }
+    # if (class == "symbolNimbleFunctionList") {
+    #   nf_fieldName <- as.character(code[[3]])
+    #   newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
+    #   return(newRunCode)
+    # }
     if (class == "symbolModel") {
-      singleAccess_ArgList <- list(code = code, model = callerCode, var = as.character(code[[3]]))
-      accessName <- singleVarAccess_SetupTemplate$makeName(singleAccess_ArgList)
-      addNecessarySetupCode(accessName, singleAccess_ArgList, singleVarAccess_SetupTemplate, nfProc)
-      return(as.name(accessName))
-    }
-    if (class == "symbolNimbleFunction") {
-      # 	Code is of the form myNimbleFunction$myMethod
-      #   or myNimbleFunction$myVar
-
-
-      # 	Note that we have cut off '()' in the case of myMethod, so we must inspect the
-      #   nested symbol for myMethod to determine whether it is a method or variable
-
-      nf_fieldName <- as.character(code[[3]])
-      objectSymbol <- symObj$nfProc$setupSymTab$getSymbolObject(nf_fieldName)
-      if (class(objectSymbol)[[1]] == "symbolMemberFunction") {
-        newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
-        return(newRunCode)
-      } else {
-        # We *assume* that if its not a member function, it should be treated with
-        # nfVar
-        newRunCode <- substitute(nfVar(NIMBLEFXN, VARNAME), list(NIMBLEFXN = callerCode, VARNAME = nf_fieldName))
-        return(newRunCode)
+      singleAccess_ArgList <-
+        list(code = code, model = callerCode, var = as.character(code[[3]]))
+      accessName <-
+        singleVarAccess_SetupTemplate$makeName(singleAccess_ArgList)
+      fieldName <-
+        singleVarAccess_SetupTemplate$makeFieldName(singleAccess_ArgList)
+      addNecessarySetupCode(
+        accessName, fieldName,
+        singleAccess_ArgList, singleVarAccess_SetupTemplate, nfProc
+      )
+      model_obj <- eval(singleAccess_ArgList$model,
+        envir = nfProc$instances[[1]]
+      )
+      varInfo <- model_obj$modelDef$varInfo[[singleAccess_ArgList$var]]
+      nDim <- varInfo$nDim
+      if (length(nDim) == 0 || is.na(nDim)) {
+        cat("Problem: nDim is invalid for keyword processing of model$var\n")
+        browser()
       }
-    }
-    if (class == "symbolNimbleList") {
-      # 	Code is of the form
-      #  myNimbleList$myVar
-      nl_fieldName <- as.character(code[[3]])
-      newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
+      # In nimble we also used size, but that may not be necessary
+      if (nDim == 0) {
+        nDim <- 1
+      } ## There is no such thing as a scalar in a model
+      as_type <- paste0("double(", nDim, ")")
+      newRunCode <- substitute(
+        nAs(FIELDNAME, ASTYPE),
+        list(FIELDNAME = as.name(fieldName), ASTYPE = as_type)
+      )
       return(newRunCode)
     }
-    if (class == "symbolNimbleFunctionList") {
-      # 	Code is of the form myNimbleFunctionList[[i]]$foo	(foo should be a method)
-      # 	At this point, we cannot access variables of a nimble function list, ie
-      # 	myNimbleFunctionList[[i]]$myVariable is not allowed
-      # 	If we add this functionality, we will need to look up what foo as we do
-      # 	for the nimbleFunction case above
+    # if (class == "symbolNimbleFunction") {
+    #   # 	Code is of the form myNimbleFunction$myMethod
+    #   #   or myNimbleFunction$myVar
 
-      nf_name <- code[[2]]
-      nf_fieldName <- as.character(code[[3]])
-      newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = nf_name, METHODNAME = nf_fieldName))
-      return(newRunCode)
-    }
+
+    #   # 	Note that we have cut off '()' in the case of myMethod, so we must inspect the
+    #   #   nested symbol for myMethod to determine whether it is a method or variable
+
+    #   nf_fieldName <- as.character(code[[3]])
+    #   objectSymbol <- symObj$nfProc$setupSymTab$getSymbolObject(nf_fieldName)
+    #   if (class(objectSymbol)[[1]] == "symbolMemberFunction") {
+    #     newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
+    #     return(newRunCode)
+    #   } else {
+    #     # We *assume* that if its not a member function, it should be treated with
+    #     # nfVar
+    #     newRunCode <- substitute(nfVar(NIMBLEFXN, VARNAME), list(NIMBLEFXN = callerCode, VARNAME = nf_fieldName))
+    #     return(newRunCode)
+    #   }
+    # }
+    # if (class == "symbolNimbleList") {
+    #   # 	Code is of the form
+    #   #  myNimbleList$myVar
+    #   nl_fieldName <- as.character(code[[3]])
+    #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
+    #   return(newRunCode)
+    # }
+    # if (class == "symbolNimbleFunctionList") {
+    #   # 	Code is of the form myNimbleFunctionList[[i]]$foo	(foo should be a method)
+    #   # 	At this point, we cannot access variables of a nimble function list, ie
+    #   # 	myNimbleFunctionList[[i]]$myVariable is not allowed
+    #   # 	If we add this functionality, we will need to look up what foo as we do
+    #   # 	for the nimbleFunction case above
+
+    #   nf_name <- code[[2]]
+    #   nf_fieldName <- as.character(code[[3]])
+    #   newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = nf_name, METHODNAME = nf_fieldName))
+    #   return(newRunCode)
+    # }
   }
 )
 
@@ -1177,27 +1211,27 @@ keywordListModelMemberFuns[["getBound"]] <- modelMemberFun_keywordInfo
 
 matchFunctions <- new.env()
 matchFunctions[["setSize"]] <- function(var, ..., copy = TRUE, fillZeros = TRUE) {}
-#matchFunctions[["nimC"]] <- nimC
+# matchFunctions[["nimC"]] <- nimC
 matchFunctions[["nimRep"]] <- function(x, times = 1, length.out, each = 1) {}
-#matchFunctions[["nimSeq"]] <- nimSeq
-#matchFunctions[["nimNumeric"]] <- nimNumeric
-#matchFunctions[["nimInteger"]] <- nimInteger
-#matchFunctions[["nimLogical"]] <- nimLogical
-#matchFunctions[["nimMatrix"]] <- nimMatrix
-#matchFunctions[["nimArray"]] <- nimArray
+# matchFunctions[["nimSeq"]] <- nimSeq
+# matchFunctions[["nimNumeric"]] <- nimNumeric
+# matchFunctions[["nimInteger"]] <- nimInteger
+# matchFunctions[["nimLogical"]] <- nimLogical
+# matchFunctions[["nimMatrix"]] <- nimMatrix
+# matchFunctions[["nimArray"]] <- nimArray
 matchFunctions[["values"]] <- function(model, nodes, accessor) {}
-#matchFunctions[["getParam"]] <- getParam
-#matchFunctions[["getBound"]] <- getBound
-#matchFunctions[["calculate"]] <- calculate
-#matchFunctions[["calculateDiff"]] <- calculateDiff
-#matchFunctions[["simulate"]] <- simulate
-#matchFunctions[["getLogProb"]] <- getLogProb
+# matchFunctions[["getParam"]] <- getParam
+# matchFunctions[["getBound"]] <- getBound
+# matchFunctions[["calculate"]] <- calculate
+# matchFunctions[["calculateDiff"]] <- calculateDiff
+# matchFunctions[["simulate"]] <- simulate
+# matchFunctions[["getLogProb"]] <- getLogProb
 matchFunctions[["nimCopy"]] <- function(from, to, nodes, nodesTo, row, rowTo, logProb = FALSE, logProbOnly = FALSE) {}
 matchFunctions[["double"]] <- function(nDim, dim, default, ...) {}
 matchFunctions[["int"]] <- function(nDim, dim, default, ...) {}
-#matchFunctions[["nimOptim"]] <- nimOptim
-#matchFunctions[["nimIntegrate"]] <- nimIntegrate
-#matchFunctions[["nimOptimDefaultControl"]] <- nimOptimDefaultControl
+# matchFunctions[["nimOptim"]] <- nimOptim
+# matchFunctions[["nimIntegrate"]] <- nimIntegrate
+# matchFunctions[["nimOptimDefaultControl"]] <- nimOptimDefaultControl
 matchFunctions[["nimEigen"]] <- function(squareMat, symmetric = FALSE, only.values = FALSE) {}
 matchFunctions[["nimSvd"]] <- function(mat, vectors = "full") {}
 matchFunctions[["nimDerivs"]] <- function(call = NA,
@@ -1206,7 +1240,7 @@ matchFunctions[["nimDerivs"]] <- function(call = NA,
                                           model = NA, updateNodes = NA, constantNodes = NA,
                                           do_update = TRUE, reset = FALSE,
                                           outInds = NA, inDir = NA, outDir = NA) {}
-#matchFunctions[["derivInfo"]] <- derivInfo
+# matchFunctions[["derivInfo"]] <- derivInfo
 matchFunctions[["besselK"]] <- function(x, nu, expon.scaled = FALSE) {}
 matchFunctions[["dgamma"]] <- function(x, shape, rate = 1, scale, log = FALSE) {}
 matchFunctions[["rgamma"]] <- function(n, shape, rate = 1, scale) {}
@@ -1660,14 +1694,20 @@ code2Name_fromArgList <- function(argList) {
 
 singleVarAccess_SetupTemplate <- setupCodeTemplateClass(
   # Note to progammer: required fields of argList are 'code' (raw code to be processed), model and var
-  makeName = code2Name_fromArgList,
-  codeTemplate = quote(SINGLEACCESSOR <- nimble:::singleVarAccess(MODEL, VAR)),
-  makeCodeSubList = function(resultName, argList) {
+  makeName = \(...) NULL,
+  makeFieldName = code2Name_fromArgList,
+  ctorCodeTemplate = quote({
+    FIELDNAME <- MODEL[[VAR]]
+  }),
+  makeCtorCodeSubList = function(fieldName, argList) {
     list(
-      SINGLEACCESSOR = as.name(resultName),
+      FIELDNAME = as.name(fieldName),
       MODEL = argList$model,
       VAR = argList$var
     )
+  },
+  makeFieldTypes = function(fieldName, argList) {
+    list("ETaccessor") |> setNames(fieldName)
   }
 )
 
@@ -1754,11 +1794,29 @@ isCodeArgBlank <- function(code, arg) {
 }
 
 # Utility functions to make things a little neater
-isSetupCodeGenerated <- function(name, nfProc) {
-  name %in% nfProc$newSetupOutputNames
+isSetupCodeGenerated <- function(name = NULL, fieldName = NULL, nfProc) {
+  if (is.null(name) && is.null(fieldName)) {
+    stop("In isSetupCodeGenerated, at least one of name and fieldName must be non-NULL.")
+  }
+  setupCodeDone <-
+    if (is.null(name)) {
+      FALSE
+    } else {
+      name %in% nfProc$newSetupOutputNames
+    }
+  fieldDone <-
+    if (is.null(fieldName)) {
+      FALSE
+    } else {
+      fieldName %in% nfProc$newFieldNames
+    }
+  return(setupCodeDone || fieldDone)
 }
 addSetupCodeNames <- function(name, otherNames, nfProc) {
   nfProc$newSetupOutputNames <- c(name, otherNames, nfProc$newSetupOutputNames)
+}
+addFieldNames <- function(fieldName, otherFieldNames, nfProc) {
+  nfProc$newFieldNames <- c(fieldName, otherFieldNames, nfProc$newFieldNames)
 }
 addBlockFromCppName <- function(name, nfProc) {
   nfProc$blockFromCppNames <- c(name, nfProc$blockFromCppNames)
@@ -1766,14 +1824,33 @@ addBlockFromCppName <- function(name, nfProc) {
 addNewCode <- function(name, subList, template, nfProc) {
   nfProc$newSetupCode[[name]] <- eval(substitute(substitute(TEMPLATE, subList), list(TEMPLATE = template$codeTemplate)))
 }
+addNewInitCode <- function(fieldName, subList, template, nfProc) {
+  nfProc$new_init_code[[fieldName]] <- eval(substitute(substitute(TEMPLATE, subList), list(TEMPLATE = template$ctorCodeTemplate)))
+}
+addFieldTypes <- function(fieldName, subList, template, nfProc) {
+  fieldTypes <- template$makeFieldTypes(fieldName, subList)
+  nfProc$newFieldTypes <- c(nfProc$newFieldTypes, fieldTypes)
+}
 
-addNecessarySetupCode <- function(name, argList, template, nfProc, allowToCpp = TRUE) {
+addNecessarySetupCode <- function(
+  name = NULL, fieldName = NULL,
+  argList, template,
+  nfProc, allowToCpp = TRUE
+) {
   if (is.null(nfProc)) stop("Trying to add setup code for a nimbleFunction with no setup code.")
-  if (!isSetupCodeGenerated(name, nfProc)) {
-    addSetupCodeNames(name, template$makeOtherNames(name, argList), nfProc)
-    subList <- template$makeCodeSubList(name, argList)
-    addNewCode(name, subList, template, nfProc)
-    if (!allowToCpp) addBlockFromCppName(name, nfProc) ## ignores makeOtherNames for now
+  if (!isSetupCodeGenerated(name, fieldName, nfProc)) {
+    if (!is.null(name)) {
+      addSetupCodeNames(name, template$makeOtherNames(name, argList), nfProc)
+      subList <- template$makeCodeSubList(name, argList)
+      addNewCode(name, subList, template, nfProc)
+      if (!allowToCpp) addBlockFromCppName(name, nfProc) ## ignores makeOtherNames for now
+    }
+    if (!is.null(fieldName)) {
+      addFieldNames(fieldName, template$makeOtherFieldNames(fieldName, argList), nfProc)
+      subList <- template$makeCtorCodeSubList(fieldName, argList)
+      addNewInitCode(fieldName, subList, template, nfProc)
+      addFieldTypes(fieldName, subList, template, nfProc)
+    }
   }
 }
 
@@ -1788,7 +1865,7 @@ getSymObj_recurse <- function(code, symTab, recurse = FALSE) { # code will be li
   } else {
     memberName <- deparse(code)
   }
-  symObject <- if (is.null(symTab)) NULL else symTab$getSymbolObject(memberName)
+  symObject <- if (is.null(symTab)) NULL else symTab$getSymbol(memberName)
   if (recurse) {
     if (inherits(symObject, "symbolNimbleFunction")) {
       return(symObject$nfProc$setupSymTab)
@@ -1968,8 +2045,8 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
   if (is.null(symObj)) stop("Problem looking up object")
 
   if (symObj$type == "nimbleFunction") {
-   # thisRCfunProc <- symObj$nfProc$RCfunProcs[[memFunName]]
-   # if (is.null(thisRCfunProc)) stop(paste0("Cannot handle this expression (member function may not exist): ", deparse(code)), call. = FALSE)
+    # thisRCfunProc <- symObj$nfProc$RCfunProcs[[memFunName]]
+    # if (is.null(thisRCfunProc)) stop(paste0("Cannot handle this expression (member function may not exist): ", deparse(code)), call. = FALSE)
     thisFunctionMatch <- nCompiler::NFinternals(symObj$nFun)$default_matchDef
     return(matchAndFill.call(thisFunctionMatch, code))
   }
@@ -1996,8 +2073,8 @@ matchKeywordCode <- function(code, nfProc) {
     if (nfProc$setupSymTab$symbolExists(modCallName)) {
       symObj <- nfProc$setupSymTab$getSymbol(modCallName)
       if (inherits(symObj, "symbolMemberFunction")) {
-        #thisRCfunProc <- nfProc$RCfunProcs[[modCallName]]
-        #if (is.null(thisRCfunProc)) stop(paste0("Cannot handle this expression (looks like a member function but something is wrong): ", deparse(code)), call. = FALSE)
+        # thisRCfunProc <- nfProc$RCfunProcs[[modCallName]]
+        # if (is.null(thisRCfunProc)) stop(paste0("Cannot handle this expression (looks like a member function but something is wrong): ", deparse(code)), call. = FALSE)
         thisFunctionMatch <- nCompiler::NFinternals(symObj$nFun)$default_matchDef
         return(matchAndFill.call(thisFunctionMatch, code))
       }
@@ -2124,7 +2201,7 @@ varAndIndices2mapParts <- function(varAndIndices, sizes, nDim) {
     targetSizes <- integer(nDim)
     blockBool <- rep(FALSE, nDim)
     for (i in seq_along(indices)) {
-      if (is.blank(indices[[i]])) {
+      if (is_blank(indices[[i]])) {
         blockBool[i] <- TRUE
         firstIndexRexprs[[i]] <- 1
         targetSizes[i] <- sizes[i]

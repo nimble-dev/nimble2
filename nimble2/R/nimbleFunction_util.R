@@ -50,7 +50,7 @@ is.rcf <- function(x, inputIsName = FALSE, where = -1) {
       return(FALSE)
     }
     if (exists("nfMethodRCobject", envir = environment(x), inherits = FALSE)) {
-      if(inherits(x, 'nFunction')) {
+      if (inherits(x, "nFunction")) {
         return(TRUE)
       } else {
         warning("It looks like an RCfunction (nimbleFunction) from an older version of nimble is being used.")
@@ -132,4 +132,15 @@ getDefinition <- function(nf) {
   nfEnv <- environment(nfGen)
   defList <- c(list(setup = nfEnv$setup, run = nfEnv$run), nfEnv$methods)
   defList
+}
+
+# detect the value of formals(function(a){})$a
+is_blank <- function(arg) {
+  if (is.null(arg)) {
+    return(FALSE)
+  }
+  # old approach
+  # return(identical(arg, quote(x[])[[3]]))
+  # slightly simpler approach borrowed from rlang::is_missing
+  return(identical(arg, quote(expr = )))
 }

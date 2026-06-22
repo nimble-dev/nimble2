@@ -1,6 +1,6 @@
 #' Access or set a member variable of a nimbleFunction
-#' 
-#' Internal way to access or set a member variable of a nimbleFunction created during \code{setup}.  Normally in NIMBLE code you would use \code{nf$var} instead of \code{nfVar(nf, var)}. 
+#'
+#' Internal way to access or set a member variable of a nimbleFunction created during \code{setup}.  Normally in NIMBLE code you would use \code{nf$var} instead of \code{nfVar(nf, var)}.
 #'
 #' @aliases nfVar nfVar<-
 #'
@@ -17,42 +17,44 @@
 #'
 #'
 #' For internal access to methods of \code{nf}, see \code{\link{nfMethod}}.
-#' 
+#'
 #' For more information, see \code{?nimbleFunction} and the NIMBLE \href{https://r-nimble.org/manual/cha-welcome-nimble.html}{User Manual}.
 #'
 #' @return whatever varName is in the nimbleFunction nf.
 #' @examples
 #' nfGen1 <- nimbleFunction(
-#'     setup = function(A) {
+#'   setup = function(A) {
 #'     B <- matrix(rnorm(4), nrow = 2)
 #'     setupOutputs(B) ## preserves B even though it is not used in run-code
-#'    },
-#'    run = function() {
-#'       print('This is A', A, '\n')
-#' })
+#'   },
+#'   run = function() {
+#'     print("This is A", A, "\n")
+#'   }
+#' )
 #'
 #' nfGen2 <- nimbleFunction(
 #'   setup = function() {
 #'     nf1 <- nfGen1(1000)
 #'   },
 #'   run = function() {
-#'       print('accessing A:', nfVar(nf1, 'A'))
-#'       nfVar(nf1, 'B')[2,2] <<- -1000
-#'       print('accessing B:', nfVar(nf1, 'B'))
-#'    })
-#'        
+#'     print("accessing A:", nfVar(nf1, "A"))
+#'     nfVar(nf1, "B")[2, 2] <<- -1000
+#'     print("accessing B:", nfVar(nf1, "B"))
+#'   }
+#' )
+#'
 #' nf2 <- nfGen2()
 #' nf2$run()
 nfVar <- function(nf, varName) {
-    refClassObj <- nf_getRefClassObject(nf)
-    v <- refClassObj[[varName]]
-    return(v)
+  refClassObj <- nf_getRefClassObject(nf)
+  v <- refClassObj[[varName]]
+  return(v)
 }
 
 #' @rdname nfVar
 #' @export
 `nfVar<-` <- function(nf, varName, value) {
-    refClassObj <- nf_getRefClassObject(nf)
-    refClassObj[[varName]] <- value
-    return(nf)
+  refClassObj <- nf_getRefClassObject(nf)
+  refClassObj[[varName]] <- value
+  return(nf)
 }

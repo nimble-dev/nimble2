@@ -1,246 +1,4 @@
-## Drafting backward compatibility for nimble here.
-## Eventually this should live in the nimble package itself.
-
-## This little system for expanding units was for a preliminary "bridge"
-## prototype. It will be replaced by the steps of nimble's "keyword processing"
-## and the nimpleProjectClass to hold discovered new units.
-
-# compileNimble_expandUnits <- function(units, unitTypes) {
-#   ## This will return a list with:
-#   ## - units: a list of units containing any units called by the input units
-#   ## - unitTypes: a corresponding vector of unitTypes
-#   ## - a list of additional names for units in case the same is found by multiple names
-#   ##   which would be unusual but technically seems possible
-#   needed_result <- character()
-#   done <- FALSE
-#   new_units <- units
-#   new_extraNames <- rep(list(character()), length(units))
-#   new_unitTypes <- unitTypes
-#   output_units <- list()
-#   output_unitTypes <- character()
-#   output_extraNames <- list()
-#   while (!done) {
-#     new_needed_result <- character()
-#     for (i in seq_along(new_units)) {
-#       if (unitTypes[i] == "rcf") {
-#         nfMethodRCobj <- environment(new_units[[i]])$nfMethodRCobject
-#         new_needed_result <- c(
-#           new_needed_result,
-#           RCfun_find_needed_recurse(nfMethodRCobj$code)
-#         )
-#       }
-#     }
-#     output_units <- c(output_units, new_units)
-#     output_unitTypes <- c(output_unitTypes, new_unitTypes)
-#     output_extraNames <- c(output_extraNames, new_extraNames)
-#     new_units <- list()
-#     new_extraNames <- list()
-#     new_unitTypes <- character()
-
-#     new_unique_names <- unique(names(new_needed_result))
-#     new_unique_names <- setdiff(new_unique_names, names(needed_result))
-#     if (length(new_unique_names) == 0) {
-#       done <- TRUE
-#       next
-#     }
-#     unique_new_needed_result <- new_needed_result[new_unique_names]
-#     new_found_objects <- mget(names(unique_new_needed_result),
-#       envir = asNamespace("nimble"),
-#       inherits = TRUE, ifnotfound = list(NULL)
-#     )
-#     new_object_already_in_units <- rep(FALSE, length(new_found_objects))
-#     needed_result <- c(needed_result, unique_new_needed_result)
-#     new_found_objects_unitTypes <- getNimbleTypes(new_found_objects)
-#     for (i in seq_along(new_found_objects)) {
-#       this_object <- new_found_objects[[i]]
-#       if (is.null(this_object)) {
-#         message(
-#           "The nimbleFunction ", names(new_found_objects)[i],
-#           " is not found. We'll try to continue anyway."
-#         )
-#         new_object_already_in_units[i] <- TRUE # to allow moving on
-#       }
-#       for (j in seq_along(output_units)) {
-#         if (identical(output_units[[j]], this_object)) {
-#           new_object_already_in_units[i] <- TRUE
-#           new_name <- names(new_found_objects)[i]
-#           if (!(new_name == names(output_units)[j])) {
-#             output_extraNames[[j]] <- c(
-#               output_extraNames[[j]],
-#               names(new_found_ojects)[i]
-#             )
-#           }
-#           break
-#         }
-#       }
-#       for (j in seq_along(new_units)) {
-#         if (identical(new_units[[j]], this_object)) {
-#           new_object_already_in_units[i] <- TRUE
-#           new_extraNames[[j]] <- c(
-#             new_extraNames[[j]],
-#             names(new_found_ojects)[i]
-#           )
-#           break
-#         }
-#       }
-#       if (!new_object_already_in_units[i]) {
-#         if (!isTRUE(new_found_objects_unitTypes[i] == "unknown")) {
-#           message(
-#             "not sure what to do with object found for ",
-#             names(new_found_objects)[i], " which is not an rcf."
-#           )
-#         } else {
-#           new_units <- c(new_units, this_object)
-#           new_extraNames <- c(new_extraNames, list(character()))
-#           new_unitTypes <- c(unitTypes, new_found_objects_unitTypes[i])
-#         }
-#       }
-#     }
-#     if (all(new_object_already_in_units)) {
-#       done <- TRUE
-#     }
-#   }
-#   list(
-#     units = output_units,
-#     unitTypes = output_unitTypes,
-#     extraNames = output_extraNames
-#   )
-# }
-
-# nimble_other_valid_call_names <- c("{", "$")
-
-# RCfun_find_needed_recurse <- function(code) {
-#   results <- character()
-#   cl <- length(code)
-#   if (is.call(code)) { # f(a, b, c)
-#     # Handle the f
-#     f_code <- code[[1]] # f of f(a, b, c)
-#     if (length(f_code) > 1) { # A case like g(h)(a, b, c), i.e. a chained call
-#       results <- c(
-#         results,
-#         RCfun_find_needed_recurse(f_code)
-#       )
-#     } else { # not a chained call
-#       # look for f in sizeProcessing or in environment
-#       f_text <- deparse(f_code)
-#       if (identical(f_text, "$")) {
-#         if (identical(deparse(code[[3]]), "new")) {
-#           results <- c(results, structure("NFgenerator", names = deparse(code[[2]])))
-#         }
-#       }
-#       # To-do: refine how we check for known operators
-#       new_RCfun <- is.null(nCompiler:::operatorDefEnv[[f_text]])
-#       # new_RCfun <- is.null(nimble:::sizeCalls[[f_text]]) &&
-#       #   is.null(nimble:::specificCallHandlers[[f_text]])
-#       new_RCfun <- new_RCfun && !(f_text %in% nimble_other_valid_call_names)
-#       # check if it is a needed RCfun
-#       if (new_RCfun) {
-#         results <- c(results, structure("RCfun", names = f_text))
-#       }
-#     }
-#     # handle the arguments
-#     if (length(code) > 1) {
-#       for (i in 2:length(code)) {
-#         if (is.call(code[[i]])) { # avoids recursing on a$b for an object rather than packaging.R
-#           results <- c(
-#             results,
-#             RCfun_find_needed_recurse(code[[i]])
-#           )
-#         }
-#       }
-#     }
-#   }
-#   results
-# }
-
-# #' @export
-# RCfun_2_nFun <- function(RCfun, env = parent.frame()) {
-#   if (inherits(RCfun, "nfMethodRC")) {
-#     nfMethodRCobj <- RCfun
-#   } else {
-#     nfMethodRCobj <- environment(RCfun)$nfMethodRCobject
-#   }
-#   fun <- function() {}
-#   body(fun) <- nfMethodRCobj$code
-#   formals(fun) <- nfMethodRCobj$argInfo
-#   nFun <- nFunction(
-#     name = nfMethodRCobj$uniqueName, # This might be helpful
-#     fun = fun,
-#     returnType = !!(nfMethodRCobj$returnType),
-#     where = env
-#   )
-#   nFun
-# }
-
 BROWSE_COMPILE_NIMBLE <- FALSE
-
-buildCopyFromNimbleFunction <- function(nComp_types_list) {
-  buildOneCopyLine <- function(type) {
-    paste0("SEXP_to_type(", type$name, ', SdataEnv["', type$name, '"]);')
-  }
-  copyLines <- nComp_types_list |>
-    lapply(buildOneCopyLine) |>
-    unlist()
-  #  copyLines <- 'Rprintf("copying\\n");'
-  copyfun <- eval(substitute(
-    nFunction(
-      function(NFobj = "SEXP") {
-        nCpp(c(
-          "Rcpp::Environment SdataEnv = get_NF_dataenv(NFobj);",
-          COPYLINES
-        ))
-      }
-    ),
-    list(COPYLINES = copyLines)
-  ))
-}
-
-#' @export
-NF_2_nClass <- function(nf) {
-  #   # browser()
-  dirName <- tempdir()
-  projectName <- ""
-  #   project <- nimble:::nimbleProjectClass(dirName, name = projectName)
-  generatorName <- nfGetDefVar(nf, "name")
-  nfProc <- nfProcessing(nf, generatorName, fromModel = FALSE, project = project, isNode = FALSE)
-  #   nfProc$setupTypesForUsingFunction()
-  #   setupSymTab <- nfProc$setupSymTab
-  #   nComp_types_list <- nimbleSymTab_to_nComp_types(setupSymTab)
-  #   origMethods <- nfProc$origMethods
-  #   nComp_methods_list <- origMethods |> lapply(RCfun_2_nFun)
-  #   copyFromNimbleFunction <-
-  #     list(copyFromNF = buildCopyFromNimbleFunction(nComp_types_list))
-  #   nCans <- nClass(
-  #     classname = nfProc$name,
-  #     Cpublic = c(nComp_types_list, nComp_methods_list, copyFromNimbleFunction)
-  #   )
-  #   nCans
-}
-
-# #' @export
-# nCompile_nimbleFunctionClass <- function(nf) {
-#   # browser()
-#   nCans <- NF_2_nClass(nf)
-#   CnCans <- nCompile(nCans)
-#   obj <- CnCans$new()
-#   obj$copyFromNF(nf)
-#   obj
-# }
-
-# nimbleSymTab_to_nComp_types <- function(symTab) {
-#   symbolNames <- symTab$getSymbolNames()
-#   result <- list()
-#   for (sn in symbolNames) {
-#     obj <- symTab$getSymbolObject(sn)
-#     symClass <- class(obj)
-#     if (symClass[length(symClass)] == "symbolBasic") { # numeric, integer, logical
-#       nDim <- obj$nDim
-#       scalarType <- obj$type
-#       result[[sn]] <- nTypeBasic(name = sn, scalarType = scalarType, nDim = nDim)
-#     }
-#   }
-#   result
-# }
 
 nimble_nCompiler_opDefs <- list(
   nimRound = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "round")),
@@ -393,9 +151,18 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
       #   }
       # }
       # environment(units[[i]])$nfMethodRCobject[["nimbleProject"]] <- project
-      ans[[i]] <- 
+      ans[[i]] <-
         project$RCfunction_add(units[[i]], control = control)
-      if(names(units)[i] != '') names(ans)[i] <- names(units)[i]
+      if (names(units)[i] != "") names(ans)[i] <- names(units)[i]
+    }
+  }
+
+  modelUnits <- unitTypes == "model"
+  if (sum(modelUnits) > 0) {
+    whichUnits <- which(modelUnits)
+    for (i in whichUnits) {
+      ans[[i]] <- project$model_add(units[[i]], control = control)
+      if (names(units)[i] != "") names(ans)[i] <- names(units)[i]
     }
   }
 
@@ -404,7 +171,7 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
     whichUnits <- which(nfUnits)
     nfAns <- project$nimbleFunction_add_multi(units[whichUnits], control = control)
     ans[whichUnits] <- nfAns
-    for(i in whichUnits) if(names(units)[i] != '') names(ans)[i] <- names(units)[i]
+    for (i in whichUnits) if (names(units)[i] != "") names(ans)[i] <- names(units)[i]
   }
 
   # From here we are ready to:
@@ -418,37 +185,46 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   project$process()
   nComp_units <- project$get_nComp_units()
 
-  #names(nComp_units) <- names(units)
+  # names(nComp_units) <- names(units)
   nCompiler::registerOpDef(nimble_nCompiler_opDefs)
   on.exit({
     nCompiler::deregisterOpDef(ls(nimble_nCompiler_opDefs))
   })
-  comp <- do.call(nCompiler::nCompile, c(nComp_units, list(returnList = TRUE)))
+  nCompile_results <- do.call(nCompiler::nCompile, c(nComp_units, list(returnList = TRUE)))
 
   if (.GlobalEnv$BROWSE_COMPILE_NIMBLE) browser()
 
   compiled_units <- vector("list", length = length(units))
-  
+
   if (sum(rcfUnits) > 0) {
     whichUnits <- which(rcfUnits)
     for (i in whichUnits) {
       this_name <- nCompiler::NFinternals(units[[i]])$uniqueName
-     compiled_units[[i]] <- comp[[ this_name ]]
+      compiled_units[[i]] <- nCompile_results[[this_name]]
     }
   }
-  
+
+  project$instantiate(nCompile_results)
+
+  if (sum(modelUnits) > 0) {
+    whichUnits <- which(modelUnits)
+    for (i in whichUnits) {
+      compiled_units[[i]] <- project$model_getResults(units[[i]])
+    }
+  }
+
   if (sum(nfUnits) > 0) {
     whichUnits <- which(nfUnits)
-    compiled_units[whichUnits] <- project$instantiate(units[whichUnits], comp)
+    compiled_units[whichUnits] <- project$nimbleFunction_getResults(units[whichUnits])
   }
   names(compiled_units) <- names(units)
-  compiled_units
+  if (length(compiled_units) == 1) compiled_units[[1]] else compiled_units
 }
 
 getNimbleTypes <- function(units) {
   ans <- character(length(units))
   for (i in seq_along(units)) {
-    if (inherits(units[[i]], "RmodelBaseClass")) {
+    if (inherits(units[[i]], "modelBase_nClass")) {
       ans[i] <- "model"
     } else if (is.nf(units[[i]])) {
       ans[i] <- "nf"
@@ -471,14 +247,20 @@ getNimbleTypes <- function(units) {
 # return the nimble project, if any, associated with a model or nimbleFunction object.
 # This feature needs attention. It may be redesigned or deprecated.
 getNimbleProject <- function(project, stopOnNull = FALSE) {
-    if(inherits(project, 'nimbleProjectClass')) return(project)
-    # From here down, this has not been updated to nimble2.
-    if(is.nf(project)) return(nfVar(project, 'nimbleProject'))
-    if(is.rcf(project)) return(environment(project)$nfMethodRCobject$nimbleProject)
-    ans <- try(project$nimbleProject)
-    if(inherits(ans, 'try-error') | is.null(ans)) {
-        if(stopOnNull) stop(paste0('cannot determine nimbleProject from provided project argument'))
-        return(NULL)
-    }
-    ans
+  if (inherits(project, "nimbleProjectClass")) {
+    return(project)
+  }
+  # From here down, this has not been updated to nimble2.
+  if (is.nf(project)) {
+    return(nfVar(project, "nimbleProject"))
+  }
+  if (is.rcf(project)) {
+    return(environment(project)$nfMethodRCobject$nimbleProject)
+  }
+  ans <- try(project$nimbleProject)
+  if (inherits(ans, "try-error") | is.null(ans)) {
+    if (stopOnNull) stop(paste0("cannot determine nimbleProject from provided project argument"))
+    return(NULL)
+  }
+  ans
 }

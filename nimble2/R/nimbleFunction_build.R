@@ -245,7 +245,7 @@ nf_createGeneratorFunctionArgs <- function(setup, pf) {
     lapply(
       formals(setup),
       function(arg) {
-        if (is.blank(arg)) arg else eval(arg, pf)
+        if (is_blank(arg)) arg else eval(arg, pf)
       }
     )
   return(generatorFunctionArgs)

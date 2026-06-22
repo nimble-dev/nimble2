@@ -102,11 +102,10 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
       }
     },
     process = function(control = list(debug = FALSE, debugCpp = FALSE)) {
-      browser()
       setupSymTab <<- symbolTable(parentST = NULL)
       addMemberFunctionsToSymbolTable()
-      #setupLocalSymbolTables()
-      #doRCfunProcess(control)
+      # setupLocalSymbolTables()
+      # doRCfunProcess(control)
     }
   )
 )
@@ -122,6 +121,10 @@ nfProcessing <- setRefClass("nfProcessing",
     blockFromCppNames = "ANY", ## character vector of names of setup outputs that should not be propagated to C++
     newSetupCode = "ANY", ## list of lines of setup code populated by keyword processing
     newSetupCodeOneExpr = "ANY", ## all lines of new setup code put into one expression for evaluation
+    newFieldNames = "ANY",
+    newFieldTypes = "ANY",
+    new_init_code = "ANY",
+    cpp_init_ = "ANY",
     nClassGen = "ANY"
   ),
   methods = list(
@@ -153,6 +156,9 @@ nfProcessing <- setRefClass("nfProcessing",
       newSetupOutputNames <<- character()
       blockFromCppNames <<- character()
       newSetupCode <<- list()
+      newFieldNames <<- character()
+      newFieldTypes <<- list()
+      new_init_code <<- list()
     }},
     getSymbolTable = function() setupSymTab,
     getMethodInterfaces = function() origMethods,
@@ -167,6 +173,7 @@ nfProcessing <- setRefClass("nfProcessing",
     setupTypesForUsingFunction = function() {},
     doSetupTypeInference = function() {},
     clearSetupOutputs = function() {},
+    build_cpp_init_ = function() {},
     build_nClassGen = function() {},
     # setupLocalSymbolTables = function() {
     #   for (i in seq_along(RCfunProcs)) {
@@ -251,7 +258,6 @@ nfProcessing <- setRefClass("nfProcessing",
         ## This step could have already been done if the types were needed by another nimbleFunction
         setupTypesForUsingFunction()
       }
-
       # if (debug) browser()
       makeNewSetupLinesOneExpr()
 
@@ -267,6 +273,8 @@ nfProcessing <- setRefClass("nfProcessing",
       #   writeLines("***** READY FOR doSetupTypeInference *****")
       #   browser()
       # }
+      build_cpp_init_()
+
       doSetupTypeInference(setupOrig = FALSE, setupNew = TRUE)
 
       # if (debug) {
@@ -287,11 +295,21 @@ nfProcessing <- setRefClass("nfProcessing",
       build_nClassGen()
       # if (debug) {
       #   print("done with RCfunProcessing")
-      #   browser()
+      #
       # }
     }
   )
 )
+
+nfProcessing$methods(build_cpp_init_ = function() {
+  init_function <- function() {}
+  body(init_function) <- as.call(c(list(as.name("{")), .self$new_init_code))
+  init_ <- nFunction(
+    fun = init_function,
+    compileInfo = list(constructor = FALSE) # This is not an actual constructor; showing that clearly here.
+  )
+  cpp_init_ <<- init_
+})
 
 nfProcessing$methods(build_nClassGen = function() {
   new_methods <- list()
@@ -299,23 +317,31 @@ nfProcessing$methods(build_nClassGen = function() {
     thisName <- names(origMethods)[i]
     new_methods[[thisName]] <- origMethods[[i]]
     nCompiler::NFinternals(new_methods[[thisName]]) <- nCompiler::NFinternals(origMethods[[i]])$clone()
-    nCompiler::NFinternals(new_methods[[thisName]])$code <- processedCodes[[i]]
+    nCompiler::NFinternals(new_methods[[thisName]])$updateCode(processedCodes[[i]])
   }
   members <- setupSymTab$symbols
-  for(mn in names(members)) {
+  for (mn in names(members)) {
     sym <- members[[mn]]
-    if(inherits(sym, "symbolNimbleSpecial"))
+    if (inherits(sym, "symbolNimbleSpecial")) {
       members[[mn]] <- NULL
+    }
   }
+  classname <- "make_this_random"
+  initL <- list(cpp_init_ = cpp_init_)
   nClassGen <<- eval(substitute(
     nCompiler::nClass(
+      classname = CLASSNAME,
       Cpublic = c(
         MEMBERS,
         METHODS
       ),
       env = environment(nfGenerator)
     ),
-    list(MEMBERS = members, METHODS = new_methods)
+    list(
+      MEMBERS = c(members, .self$newFieldTypes),
+      METHODS = c(new_methods, initL),
+      CLASSNAME = classname
+    )
   ))
   nClassGen
 })
@@ -417,16 +443,18 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
     origSetupOutputs <- nf_getSetupOutputNames(nfGenerator)
     declaredSetupOutputs <- getFunctionEnvVar(nfGenerator, "declaredSetupOutputNames")
     origSetupOutputs <- setdiff(origSetupOutputs, declaredSetupOutputs)
-    newRcodeList <- processedCodes
+    newRcodeList <- c(processedCodes, list(nCompiler::NFinternals(cpp_init_)$code))
     # newRcodeList <- lapply(compileInfos, `[[`, "newRcode")
     allNamesInCodeAfterKeywordProcessing <- unique(unlist(lapply(newRcodeList, all.names)))
     origSetupOutputNamesToKeep <- intersect(allNamesInCodeAfterKeywordProcessing, origSetupOutputs) ## this loses mv!
     origSetupOutputNamesNotNeeded <- setdiff(origSetupOutputs, origSetupOutputNamesToKeep) ## order matters
     for (nameNotNeeded in origSetupOutputNamesNotNeeded) {
       thisSym <- setupSymTab$getSymbol(nameNotNeeded)
-      if (!is.null(thisSym)) 
-        if (!thisSym$type == "Values") 
-          thisSym$type <- "Ronly" ## must keep modelValues, nimbleFunctions, possibly others
+      if (!is.null(thisSym)) {
+        if (!thisSym$type == "Values") {
+          thisSym$type <- "Ronly"
+        }
+      } ## must keep modelValues, nimbleFunctions, possibly others
     }
     outputNames <- c(outputNames, newSetupOutputNames)
   }
@@ -583,19 +611,24 @@ makeTypeObj_impl <- function(.self, name, instances, firstOnly) {
   #   newSym <- symbolModelValues(name = name, type = "Values", mvConf = NULL)
   #   return(newSym)
   # }
-  # if (inherits(instances[[1]][[name]], "modelBaseClass")) {
-  #   if (!firstOnly) {
-  #     if (!all(unlist(lapply(instances, function(x) inherits(x[[name]], "modelBaseClass"))))) {
-  #       warning(paste0("Problem: some but not all instances have ", name, " as a model.  Types must be consistent."))
-  #       return(invisible(NULL))
-  #     }
-  #     if (!all(unlist(lapply(instances, function(x) inherits(x[[name]], "RmodelBaseClass"))))) {
-  #       warning(paste0("Problem: models should be provided as R model objects, not C model objects"))
-  #       return(invisible(NULL))
-  #     }
-  #   }
-  #   return(symbolModel(name = name, type = "Ronly", className = class(instances[[1]][[name]])))
-  # }
+  if (inherits(instances[[1]][[name]], "modelBase_nClass")) {
+    if (!firstOnly) {
+      if (!all(unlist(lapply(instances, function(x) inherits(x[[name]], "modelBase_nClass"))))) {
+        warning(paste0("Problem: some but not all instances have ", name, " as a model.  Types must be consistent."))
+        return(invisible(NULL))
+      }
+      # if (!all(unlist(lapply(instances, function(x) inherits(x[[name]], "RmodelBaseClass"))))) {
+      #   warning(paste0("Problem: models should be provided as R model objects, not C model objects"))
+      #   return(invisible(NULL))
+      # }
+    }
+    .self$nimbleProject$model_add(instances[[1]][[name]])
+    return(symbolModel$new(
+      name = name,
+      type = "modelBase_nClass",
+      isArg = FALSE
+    )) # previously used a className, but may not be needed
+  }
   # if (inherits(instances[[1]][[name]], "ADproxyModelClass")) {
   #   if (!isTRUE(getNimbleOption("enableDerivs"))) {
   #     stop("It looks like derivatives are being created but nimbleOptions('enableDerivs') is not TRUE.")
@@ -612,7 +645,7 @@ makeTypeObj_impl <- function(.self, name, instances, firstOnly) {
   #     }
   #   }
 
-  #   return(symbolNumericList(name = name, type = varinfo$listType, nDim = max(varinfo$nDim, 1), className = class(instances[[1]][[name]])))
+  #   return(symbolNumericList(name = name, type = varinfo$listType, nDim = max(varinfo$nDim, 1),                                                    = class(instances[[1]][[name]])))
   # }
 
   # if (inherits(instances[[1]][[name]], "copierVectorClass")) {

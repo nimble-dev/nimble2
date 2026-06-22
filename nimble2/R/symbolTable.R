@@ -1,6 +1,6 @@
 # symbolNimbleSpecial serves as an intermediate class to make it easy
 # to identify all nimble-specific symbols.
-symbolNimbleSpecial <- 
+symbolNimbleSpecial <-
   R6::R6Class(
     classname = "symbolNimbleSpecial",
     inherit = nCompiler:::symbolBase,
@@ -31,6 +31,24 @@ symbolMemberFunction <-
         print = function() writeLines(paste("symbolMemberFunction", self$name)),
         genCppVar = function(...) {
           stop(paste("Error, you should not be generating a cppVar for symbolMemberFunction", self$name))
+        }
+      )
+  )
+
+symbolModel <-
+  R6::R6Class(
+    classname = "symbolModel",
+    inherit = nCompiler:::symbolNC,
+    public =
+      list(
+        initialize = function(...) {
+          super$initialize(
+            NCgenerator = nimbleModel:::modelBase_nClass,
+            ...
+          )
+          ## type == 'local' means it is defined in setupCode and so will need to have an object and be built
+          ## type == 'Ronly' means it is a setupArg and may be a different type for different nimbleFunction specializations
+          ##                 and it will be like a model in C++ code: not there except by extracted pointers inside of it
         }
       )
   )
