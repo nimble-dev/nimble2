@@ -11,7 +11,6 @@ keywordInfoClass <- setRefClass("keywordInfoClass",
   )
 )
 
-
 # setupCodeTemplateClass is a class that contains the template for generating
 # new setupCode. Objects of this class are used by the function addNecessarySetupCode
 setupCodeTemplateClass <- setRefClass("setupCodeTemplateClass",
@@ -29,6 +28,8 @@ setupCodeTemplateClass <- setRefClass("setupCodeTemplateClass",
   ),
   methods = list(
     initialize = function(...) {
+      makeName <<- \(...) NULL    # at least one of these must be replaced in a derived class
+      makeFieldName <<- \(...) NULL
       makeOtherNames <<- function(name, argList) {
         return(character(0))
       }
@@ -291,10 +292,10 @@ getBound_keywordInfo <- keywordInfoClass(
   }
 )
 
-
 calculate_keywordInfo <- keywordInfoClass(
   keyword = "calculate",
   processor = function(code, nfProc, RCfunProc) {
+    # Probably deprecate with warning or error:
     if (!isCodeArgBlank(code, "nodeFxnVector")) {
       return(code)
     }
@@ -302,6 +303,7 @@ calculate_keywordInfo <- keywordInfoClass(
 
     buildDerivs <- FALSE
     withDerivsOutputOnly <- FALSE
+    # To-do:
     if (isTRUE(getNimbleOption("enableDerivs"))) {
       derivControl <- environment(nfProc$nfGenerator)$buildDerivs[[RCfunProc$name]]
       ## There are two cases.
@@ -319,6 +321,7 @@ calculate_keywordInfo <- keywordInfoClass(
     )
 
     ##
+    # This goes with nodeFxnVector above: deprecate and error-trap
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
       if (!isCodeArgBlank(code, "nodes")) {
         stop("nodes argument cannot be provided to calculate if nodeFunctionIndex is specified")
@@ -328,12 +331,14 @@ calculate_keywordInfo <- keywordInfoClass(
     if (isCodeArgBlank(code, "model")) {
       stop("model argument missing from calculate, with no accessor argument supplied")
     }
+    # To-do: Support model$calculate()
     if (isCodeArgBlank(code, "nodes")) {
       LHSnodes_ArgList <- list(model = code$model)
       LHSnodes_name <- allLHSNodes_SetupTemplate$makeName(LHSnodes_ArgList)
       addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
       nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
     }
+    # To-do: support model$calculate(nodes[i])
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
       if (buildDerivs) {
@@ -356,19 +361,25 @@ calculate_keywordInfo <- keywordInfoClass(
       nodeFunVec_ArgList$sortUnique <- FALSE
     }
 
-    if (!withDerivsOutputOnly) { ## This is regular mode, including without derivs at all and with buildDerivs but not nimDerivs(model$calculate...)
-      nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
-      addNecessarySetupCode(nodeFunName, nodeFunVec_ArgList, nodeFunctionVector_SetupTemplate, nfProc)
+    if (!withDerivsOutputOnly) { 
+      ## This is main case (regular mode), including without derivs at all
+      #  and with buildDerivs but not nimDerivs(model$calculate...)
+      nodeFunName <- nodeInstrList_SetupTemplate$makeName(nodeFunVec_ArgList)
+      nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+      addNecessarySetupCode(nodeFunName, nodeFunFieldName, nodeFunVec_ArgList, nodeInstrList_SetupTemplate, nfProc)
     } else {
+      # To-do: some derivs cases:
       nodeFunName <- nodeFunctionVector_WithDerivsOutput_SetupTemplate$makeName(nodeFunVec_ArgList)
       addNecessarySetupCode(nodeFunName, nodeFunVec_ArgList, nodeFunctionVector_WithDerivsOutput_SetupTemplate, nfProc)
     }
     if (!useNodeFunctionVectorByIndex) {
+      # Regular use:
       newRunCode <- substitute(
-        calculate(nodeFxnVector = NODEFUNVEC_NAME),
-        list(NODEFUNVEC_NAME = as.name(nodeFunName))
+        model_calculate(MODEL, NODEFUNVEC_NAME),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
       )
     } else {
+      # Deprecate with nodeFxnVector and nodeFunctionIndex:
       newRunCode <- substitute(
         calculate(
           nodeFxnVector = NODEFUNVEC_NAME,
@@ -1222,7 +1233,7 @@ matchFunctions[["nimRep"]] <- function(x, times = 1, length.out, each = 1) {}
 matchFunctions[["values"]] <- function(model, nodes, accessor) {}
 # matchFunctions[["getParam"]] <- getParam
 # matchFunctions[["getBound"]] <- getBound
-# matchFunctions[["calculate"]] <- calculate
+matchFunctions[["calculate"]] <- function(model, nodes, nodeFxnVector, nodeFunctionIndex) {}
 # matchFunctions[["calculateDiff"]] <- calculateDiff
 # matchFunctions[["simulate"]] <- simulate
 # matchFunctions[["getLogProb"]] <- getLogProb
@@ -1343,7 +1354,7 @@ processKeywordCodeMemberFun <- function(code, nfProc, RCfunProc) { ## handle cas
     isModel <- FALSE
   } ## a case like a[[i]]$b(), which can only be a nimbleFunction list
   else {
-    symObj <- nfProc$setupSymTab$getSymbolObject(as.character(objectPart))
+    symObj <- nfProc$setupSymTab$getSymbol(as.character(objectPart))
     if (is.null(symObj)) stop(paste0("In processKeywordCodeMemberFun: not sure what to do with ", deparse(code)))
     if (inherits(symObj, "symbolModel")) {
       isModel <- TRUE
@@ -1561,7 +1572,47 @@ nodeFunctionVector_DerivsModelUpdateNodes_SetupTemplate <- setupCodeTemplateClas
   }
 )
 
-nodeFunctionVector_SetupTemplate <- setupCodeTemplateClass(
+# Formerly nodeFunctionVector_SetupTemplate
+nodeInstrList_SetupTemplate <- setupCodeTemplateClass(
+  # convert calculate(model, nodes) to
+  # setup code: model_nodes_instr <- nimbleModel::makeInstrList(model, nodes)
+  # run code: model$calculate(model_nodes_instr)
+  makeName = function(argList) {
+    Rname2CppName(paste(deparse(argList$model),
+      deparse(argList$nodes),
+      "instrList_incDat",
+      deparse(argList$includeData),
+      if (argList$sortUnique) "SU" else "notSU",
+      if (is.null(argList$wrtNodes)) "" else "_derivs_",
+      sep = "_"
+    ))
+  },
+  codeTemplate = quote(
+    INSTRLISTNAME <- nimbleModel:::makeInstrList(
+      model = MODEL,
+      input = NODES
+      #,
+      #wrtNodes = WRTNODES,
+      #excludeData = EXCLUDEDATA,
+      #sortUnique = SORTUNIQUE,
+      #errorContext = ERRORCONTEXT
+    )
+  ),
+  makeCodeSubList = function(resultName, argList) {
+    list(
+      INSTRLISTNAME = as.name(resultName),
+      MODEL = argList$model,
+      NODES = argList$nodes
+      #,
+      #WRTNODES = argList$wrtNodes,
+      #EXCLUDEDATA = !argList$includeData,
+      #SORTUNIQUE = argList$sortUnique,
+      #ERRORCONTEXT = argList$errorContext
+    )
+  }
+)
+
+nodeFunctionVector_SetupTemplate_old <- setupCodeTemplateClass(
   # Note to programmer: required fields of argList are model, nodes and includeData
   makeName = function(argList) {
     Rname2CppName(paste(deparse(argList$model),
@@ -1694,7 +1745,7 @@ code2Name_fromArgList <- function(argList) {
 
 singleVarAccess_SetupTemplate <- setupCodeTemplateClass(
   # Note to progammer: required fields of argList are 'code' (raw code to be processed), model and var
-  makeName = \(...) NULL,
+  makeName = \(...) NULL, # No need for a new setup output
   makeFieldName = code2Name_fromArgList,
   ctorCodeTemplate = quote({
     FIELDNAME <- MODEL[[VAR]]

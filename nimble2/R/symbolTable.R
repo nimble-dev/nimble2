@@ -16,6 +16,23 @@ symbolNimbleSpecial <-
       )
   )
 
+symbolVarRangeList <- 
+  R6::R6Class(
+    classname = "symbolVarRangeList",
+    inherit = symbolNimbleSpecial,
+    public =
+      list(
+        initialize = function(...) {
+          super$initialize(...)
+          self$type <- "Ronly"
+        },
+        print = function() writeLines(paste("symbolVarRangeList", self$name)),
+        genCppVar = function(...) {
+          stop(paste("Error, you should not be generating a cppVar for symbolVarRangeList", self$name))
+        }
+      )
+  )
+
 symbolMemberFunction <-
   R6::R6Class(
     classname = "symbolMemberFunction",
@@ -31,6 +48,25 @@ symbolMemberFunction <-
         print = function() writeLines(paste("symbolMemberFunction", self$name)),
         genCppVar = function(...) {
           stop(paste("Error, you should not be generating a cppVar for symbolMemberFunction", self$name))
+        }
+      )
+  )
+
+symbolInstrList <- 
+  R6::R6Class(
+    classname = "symbolInstrList",
+    inherit = nCompiler:::symbolBase,
+    public =
+      list(
+        declaration = "nCompiler::nList(nimbleModel:::instr_nClass())",
+        initialize = function(...) {
+          super$initialize(
+            ...
+          )
+        },
+        print = function() writeLines(paste("symbolInstrList", self$name)),
+        genCppVar = function(...) {
+          stop(paste("Error, you should not be generating a cppVar for symbolInstrList", self$name))
         }
       )
   )

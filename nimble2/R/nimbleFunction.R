@@ -7,8 +7,8 @@ nimbleFunctionBase <- setRefClass(
   Class = "nimbleFunctionBase",
   fields = list(
     .generatorFunction = "ANY",
-    .CobjectInterface = "ANY",
-    .newSetupLinesProcessed = "ANY"
+    .CobjectInterface = "ANY"#,
+#    .newSetupLinesProcessed = "ANY"
   ),
   methods = list(
     initialize = function(...) {

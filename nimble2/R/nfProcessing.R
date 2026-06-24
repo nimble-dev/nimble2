@@ -117,10 +117,11 @@ nfProcessing <- setRefClass("nfProcessing",
     instances = "ANY", ## list of instances of the nimbleFunction to used for setup types and receive newSetupCode
     neededTypes = "ANY", ## list of symbols for non-trivial types that will be needed for compilation, such as derived models or modelValues
     neededObjectNames = "ANY", ## character vector of the names of objects such as models or modelValues that need to exist during C++ instantiation and population so their contents can be pointed to
-    newSetupOutputNames = "ANY", ## character vector of names of objects created by newSetupCode from "keyword processing"
+    newSetupOutputNames = "ANY", ## character vector of names of objects created by newSetupCode from "keyword processing" (which also adds to this vector)
     blockFromCppNames = "ANY", ## character vector of names of setup outputs that should not be propagated to C++
     newSetupCode = "ANY", ## list of lines of setup code populated by keyword processing
     newSetupCodeOneExpr = "ANY", ## all lines of new setup code put into one expression for evaluation
+    instances_newSetupEnvs = "ANY",
     newFieldNames = "ANY",
     newFieldTypes = "ANY",
     new_init_code = "ANY",
@@ -131,35 +132,36 @@ nfProcessing <- setRefClass("nfProcessing",
     show = function() {
       writeLines(paste0("nfProcessing object ", name))
     },
-    initialize = function(f = NULL, className, project) {{
+    initialize = function(f = NULL, className, project) {
       force(f) # avoid warnings from recursive promise evaluation during debugging
-    }
-    neededTypes <<- list()
-    neededObjectNames <<- character()
-    newSetupCode <<- list()
-    if (!is.null(f)) {
+      neededTypes <<- list()
+      neededObjectNames <<- character()
+      newSetupCode <<- list()
+      if (!is.null(f)) {
       ## f must be a specialized nf, or a list of them
-      if (missing(className)) {
-        sf <- if (is.list(f)) nfGetDefVar(f[[1]], "name") else nfGetDefVar(f, "name")
-        name <<- nCompiler::Rname2CppName(sf)
-      } else {
-        name <<- className
-      }
-      callSuper(f, name, virtual = FALSE, project = project)
-      instances <<-
-        if (inherits(f, "list")) {
-          lapply(f, nf_getRefClassObject)
+        if (missing(className)) {
+          sf <- if (is.list(f)) nfGetDefVar(f[[1]], "name") else nfGetDefVar(f, "name")
+          name <<- nCompiler::Rname2CppName(sf)
         } else {
-          list(nf_getRefClassObject(f))
+          name <<- className
         }
-
+        callSuper(f, name, virtual = FALSE, project = project)
+        instances <<-
+          if (inherits(f, "list")) {
+            lapply(f, nf_getRefClassObject)
+          } else {
+            list(nf_getRefClassObject(f))
+          }
+        # list for envs for evaluating new setup code for instances:
+        instances_newSetupEnvs <<- vector("list", length(instances))
+      }
       newSetupOutputNames <<- character()
       blockFromCppNames <<- character()
       newSetupCode <<- list()
       newFieldNames <<- character()
       newFieldTypes <<- list()
       new_init_code <<- list()
-    }},
+    },
     getSymbolTable = function() setupSymTab,
     getMethodInterfaces = function() origMethods,
     processKeywords_all = function() {},
@@ -172,7 +174,7 @@ nfProcessing <- setRefClass("nfProcessing",
     evalNewSetupLinesOneInstance = function(instances, check = FALSE) {},
     setupTypesForUsingFunction = function() {},
     doSetupTypeInference = function() {},
-    clearSetupOutputs = function() {},
+    # clearSetupOutputs = function() {},
     build_cpp_init_ = function() {},
     build_nClassGen = function() {},
     # setupLocalSymbolTables = function() {
@@ -325,6 +327,9 @@ nfProcessing$methods(build_nClassGen = function() {
     if (inherits(sym, "symbolNimbleSpecial")) {
       members[[mn]] <- NULL
     }
+    if(!is.null(sym$declaration)) {
+      members[[mn]] <- sym$declaration
+    }
   }
   classname <- "make_this_random"
   initL <- list(cpp_init_ = cpp_init_)
@@ -352,7 +357,7 @@ nfProcessing$methods(evalNewSetupLines = function() {
     return()
   }
   for (i in seq_along(instances)) {
-    evalNewSetupLinesOneInstance(instances[[i]])
+    evalNewSetupLinesOneInstance(i)
   }
 })
 
@@ -360,36 +365,32 @@ nfProcessing$methods(makeNewSetupLinesOneExpr = function() {
   newSetupCodeOneExpr <<- as.call(c(list(as.name("{")), newSetupCode))
 })
 
-nfProcessing$methods(clearSetupOutputs = function(inst) {
-  for (i in nf_getSetupOutputNames(nfGenerator)) {
-    inst[[i]] <- NULL
-  }
-  for (i in newSetupOutputNames) {
-    inst[[i]] <- NULL
-  }
-  NULL
-})
+# nfProcessing$methods(clearSetupOutputs = function(inst) {
+#   for (i in nf_getSetupOutputNames(nfGenerator)) {
+#     inst[[i]] <- NULL
+#   }
+#   for (i in newSetupOutputNames) {
+#     inst[[i]] <- NULL
+#   }
+#   NULL
+# })
 
-nfProcessing$methods(evalNewSetupLinesOneInstance = function(instance, check = FALSE) {
-  if (is.nf(instance)) instance <- nf_getRefClassObject(instance)
+nfProcessing$methods(evalNewSetupLinesOneInstance = function(i, check = FALSE) {
+  newSetupLinesProcessed <- is.environment(instances_newSetupEnvs[[i]])
   if (check) {
-    go <- if (inherits(instance$.newSetupLinesProcessed, "uninitializedField")) {
-      TRUE
-    } else {
-      if (length(instance$.newSetupLinesProcessed) == 0) {
-        TRUE
-      } else {
-        !instance$.newSetupLinesProcessed
-      }
-    }
-    if (!go) {
+    if (newSetupLinesProcessed) {
       return(invisible(NULL))
     }
   }
+  if(!newSetupLinesProcessed) {
+    instance <- instances[[i]]
+    if (is.nf(instance)) instance <- nf_getRefClassObject(instance)
+    instances_newSetupEnvs[[i]] <<- new.env(parent = instances[[i]])
+  }
   ## Warning: this relies on the fact that although refClass environments are closed, we can
   ## eval in them and create new variables in them that way.
-  eval(newSetupCodeOneExpr, envir = instance)
-  instance$.newSetupLinesProcessed <- TRUE
+  eval(newSetupCodeOneExpr, envir = instances_newSetupEnvs[[i]])
+  #instance$.newSetupLinesProcessed <- TRUE
 })
 
 nfProcessing$methods(setupTypesForUsingFunction = function() {
@@ -456,9 +457,10 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
         }
       } ## must keep modelValues, nimbleFunctions, possibly others
     }
+    # newSetupOutputNames will have been populated during keyword processing.
     outputNames <- c(outputNames, newSetupOutputNames)
   }
-  doSetupTypeInference_processNF(setupSymTab, outputNames, instances, add = TRUE) # add info about each setupOutput to symTab
+  doSetupTypeInference_processNF(setupSymTab, outputNames, add = TRUE) # add info about each setupOutput to symTab
 
   if (setupNew) {
     ## This is the second part of the kluge.
@@ -474,13 +476,13 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
   }
 })
 
-nfProcessing$methods(doSetupTypeInference_processNF = function(symTab, setupOutputNames, instances, add = FALSE, firstOnly = FALSE) {
+nfProcessing$methods(doSetupTypeInference_processNF = function(symTab, setupOutputNames, add = FALSE, firstOnly = FALSE) {
   if (length(instances) == 0) {
     warning("Can not infer setup output types with no instances.")
     return(invisible(NULL))
   }
   for (name in setupOutputNames) {
-    symbolRCobject <- makeTypeObject(name, instances, firstOnly)
+    symbolRCobject <- makeTypeObject(name, firstOnly)
     if (is.null(symbolRCobject)) next
     if (is.logical(symbolRCobject)) {
       stop(paste0("There is an error involving the type of ", name, "."), call. = FALSE)
@@ -504,11 +506,18 @@ nfProcessing$methods(getModelVarDim = function(modelVarName, labelVarName, first
 ## firstOnly is supposed to indicate whether we look at only the first instance, or use all of them
 ## but actually, right now, we use it inconsistently.
 ## this is a function that could use a lot of polishing, but it's ok for now.
-nfProcessing$methods(makeTypeObject = function(name, instances, firstOnly = FALSE) {
-  makeTypeObj_impl(.self, name, instances, firstOnly)
+nfProcessing$methods(makeTypeObject = function(name, firstOnly = FALSE) {
+  makeTypeObj_impl(.self, name, firstOnly)
 })
 
-makeTypeObj_impl <- function(.self, name, instances, firstOnly) {
+makeTypeObj_impl <- function(.self, name, firstOnly) {
+  is_newSetupOutput <- name %in% .self$newSetupOutputNames
+  if (!is_newSetupOutput) {
+    instances_to_use <- .self$instances
+  } else {
+    instances_to_use <- .self$instances_newSetupEnvs
+  }
+  first_inst <- instances_to_use[[1]][[name]]
   # isNLG <- FALSE
   # if (is.nlGenerator(instances[[1]][[name]])) {
   #   nlGen <- instances[[1]][[name]]
@@ -579,8 +588,8 @@ makeTypeObj_impl <- function(.self, name, instances, firstOnly) {
   #   }
   #   return(newSym)
   # }
-  if (is.nf(instances[[1]][[name]])) { ## nimbleFunction
-    funList <- lapply(instances, `[[`, name)
+  if (is.nf(first_inst)) { ## nimbleFunction
+    funList <- lapply(instances_to_use, `[[`, name)
     nfp <- .self$nimbleProject$nimbleFunction_add(funList) ## will return existing nfProc if it exists
     # className <- class(nf_getRefClassObject(funList[[1]]))
     # .self$neededObjectNames <- c(.self$neededObjectNames, name)
@@ -611,9 +620,9 @@ makeTypeObj_impl <- function(.self, name, instances, firstOnly) {
   #   newSym <- symbolModelValues(name = name, type = "Values", mvConf = NULL)
   #   return(newSym)
   # }
-  if (inherits(instances[[1]][[name]], "modelBase_nClass")) {
+  if (inherits(first_inst, "modelBase_nClass")) {
     if (!firstOnly) {
-      if (!all(unlist(lapply(instances, function(x) inherits(x[[name]], "modelBase_nClass"))))) {
+      if (!all(unlist(lapply(instances_to_use, function(x) inherits(x[[name]], "modelBase_nClass"))))) {
         warning(paste0("Problem: some but not all instances have ", name, " as a model.  Types must be consistent."))
         return(invisible(NULL))
       }
@@ -622,12 +631,20 @@ makeTypeObj_impl <- function(.self, name, instances, firstOnly) {
       #   return(invisible(NULL))
       # }
     }
-    .self$nimbleProject$model_add(instances[[1]][[name]])
+    .self$nimbleProject$model_add(instances_to_use[[1]][[name]])
     return(symbolModel$new(
       name = name,
       type = "modelBase_nClass",
       isArg = FALSE
     )) # previously used a className, but may not be needed
+  }
+  if(is.list(first_inst) && 
+     length(first_inst) > 0 &&
+      inherits(first_inst[[1]], "varRangeClass")) {
+        return(symbolVarRangeList$new(name = name))
+  }
+  if(inherits(first_inst, "nList")) {
+    return(symbolInstrList$new(name = name))
   }
   # if (inherits(instances[[1]][[name]], "ADproxyModelClass")) {
   #   if (!isTRUE(getNimbleOption("enableDerivs"))) {
@@ -738,17 +755,17 @@ makeTypeObj_impl <- function(.self, name, instances, firstOnly) {
   #     return(symbolString(name = name, type = "character", nDim = nDim, size = size))
   #   }
   # }
-  if (is.numeric(instances[[1]][[name]]) | is.logical(instances[[1]][[name]])) {
+  if (is.numeric(instances_to_use[[1]][[name]]) | is.logical(instances_to_use[[1]][[name]])) {
     if (firstOnly) {
-      type <- storage.mode(instances[[1]][[name]])
-      nDim <- if (is.null(dim(instances[[1]][[name]]))) 1L else length(dim(instances[[1]][[name]]))
-      size <- if (length(instances[[1]][[name]]) == 1) rep(1L, nDim) else rep(as.numeric(NA), nDim)
+      type <- storage.mode(instances_to_use[[1]][[name]])
+      nDim <- if (is.null(dim(instances_to_use[[1]][[name]]))) 1L else length(dim(instances_to_use[[1]][[name]]))
+      size <- if (length(instances_to_use[[1]][[name]]) == 1) rep(1L, nDim) else rep(as.numeric(NA), nDim)
       if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) {
         if (nDim == 1 & identical(as.integer(size), 1L)) nDim <- 0
       }
       return(nCompiler:::symbolBasic$new(name = name, type = type, nDim = nDim, size = size))
     } else {
-      instanceObjs <- lapply(instances, `[[`, name)
+      instanceObjs <- lapply(instances_to_use, `[[`, name)
       types <- unlist(lapply(instanceObjs, storage.mode))
       dims <- lapply(instanceObjs, dim)
       dimsNULL <- unlist(lapply(dims, is.null))

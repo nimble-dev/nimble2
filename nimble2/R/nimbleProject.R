@@ -277,24 +277,48 @@ nimbleProjectClass <- R6::R6Class(
         return(invisible(NULL))
       }
       message("Determining setup output names during populate step may be incomplete.")
+      # Two categories of setup outputs:
       setupOutputNames <- nf_getSetupOutputNames(NFgens[[generatorName]]$nfGenerator)
-      inst1 <- instances[[1]]
+      newSetupOutputNames <- NFgens[[generatorName]]$nfProc$newSetupOutputNames
+      
+      # Use setupSymTab to determine special types like models
       setupSymTab <- NFgens[[generatorName]]$nfProc$setupSymTab
+      
       setupOutputSymbolClasses <- setupOutputNames |>
         lapply(\(x) class(setupSymTab$getSymbol(x))[1]) |>
         unlist()
       isModel <- setupOutputSymbolClasses %in% c("symbolModel")
       setupOutputNames_basic <- setupOutputNames[!isModel]
       setupOutputNames_models <- setupOutputNames[isModel]
+
+      newSetupOutputSymbolClasses <- newSetupOutputNames |>
+        lapply(\(x) class(setupSymTab$getSymbol(x))[1]) |>
+        unlist()
+      isModel <- newSetupOutputSymbolClasses %in% c("symbolModel")
+      newSetupOutputNames_basic <- newSetupOutputNames[!isModel]
+      newSetupOutputNames_models <- newSetupOutputNames[isModel]
+
       for (i in seq_along(instances)) {
         inst <- instances[[i]]
+        inst_newSetupEnv <- NFgens[[generatorName]]$nfProc$instances_newSetupEnvs[[i]]
         setupOutputList <- setupOutputNames_basic |>
           lapply(\(x) inst[[x]]) |>
           setNames(setupOutputNames_basic)
-        setupOutputList <- c(
-          setupOutputList,
-          setupOutputNames_models |> lapply(\(x) model_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_models)
-        )
+        if(length(setupOutputNames_models)) 
+          setupOutputList <- c(
+            setupOutputList,
+            setupOutputNames_models |> lapply(\(x) model_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_models)
+          )
+        if(length(newSetupOutputNames_basic))
+          setupOutputList <- c(
+            setupOutputList,
+            newSetupOutputNames_basic |> lapply(\(x) inst_newSetupEnv[[x]]) |> setNames(newSetupOutputNames_basic)
+          )
+        if(length(newSetupOutputNames_models))
+          setupOutputList <- c(
+            setupOutputList,
+            newSetupOutputNames_models |> lapply(\(x) model_get_compiled_internal(inst_newSetupEnv[[x]])) |> setNames(newSetupOutputNames_models)
+          )
         nCompiler::value(compiled_instances[[i]]) <- setupOutputList
         compiled_instances[[i]]$cpp_init_()
       }
