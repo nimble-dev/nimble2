@@ -2,9 +2,16 @@ BROWSE_COMPILE_NIMBLE <- FALSE
 
 make_model_calls_methods <- function(code, symTab, auxEnv, info) {
   # convert model_calculate(model, instr) to model$calculate(instr)
+  method <- switch(code$name,
+    model_calculate = "calculate_impl",
+    model_calculateDiff = "calculateDiff_impl",
+    model_simulate = "simulate_impl",
+    model_getLogProb = "getLogProb_impl"
+  )
   new_code <- substitute(
-    MODEL$calculate_impl(INSTRLISTNAME),
+    MODEL$METHOD(INSTRLISTNAME),
     list(MODEL = as.name(code$args[[1]]$name), 
+         METHOD = as.name(method),
          INSTRLISTNAME = as.name(code$args[[2]]$name))
   )
   new_expr <- nCompiler::nParse(new_code)
@@ -26,7 +33,10 @@ nimble_nCompiler_opDefs <- list(
   rexp_nimble = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "rexp_nCompiler")),
   dexp_nimble = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "dexp_nCompiler")),
   nimStep = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "nStep")),
-  model_calculate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods))
+  model_calculate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_calculateDiff = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_simulate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getLogProb = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods))
 )
 
 proxyNimbleProjectClass <- R6::R6Class(
