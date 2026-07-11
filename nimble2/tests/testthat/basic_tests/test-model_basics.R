@@ -90,8 +90,9 @@ test_that("compileNimble works nimbleFunction using model$calculate", {
 })
 
 test_that("compileNimble works nimbleFunction using model$simulate", {
+  message("model$simulate needs support for includeData argument")
   nimbleOptions(enableDerivs = FALSE)
-  .GlobalEnv$BROWSE_COMPILE_NIMBLE <- TRUE
+  .GlobalEnv$BROWSE_COMPILE_NIMBLE <- FALSE
   
   code <- quote({
     tau ~ dunif(0, 100)
@@ -129,8 +130,23 @@ test_that("compileNimble works nimbleFunction using model$simulate", {
   set.seed(2)
   c_ll1 <- cnf$nf1$run()
   c_ll2 <- cnf$m$calculate(nodes)
+  
+  # work-around until includeData argument is supported
+  nf_uncomp <- nimbleFunction(
+    setup = function(model, nodes) {},
+    run = function() {
+      model$simulate(nodes) # includeData is not yet supported when this is written
+      ans <- model$calculate(nodes)
+      return(ans)
+      returnType(double())
+    },
+    check = FALSE
+  )
+  
+  
   set.seed(2)
-  r_ll1 <- nf1$run()
+  nfu1 <- nf_uncomp(m, nodes)
+  r_ll1 <- nfu1$run()
   r_ll2 <- m$calculate(nodes)
   expect_equal(c_ll1, c_ll2)
   expect_equal(c_ll1, r_ll1)

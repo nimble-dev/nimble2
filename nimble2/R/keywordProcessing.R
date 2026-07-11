@@ -11,35 +11,108 @@ keywordInfoClass <- setRefClass("keywordInfoClass",
   )
 )
 
-# setupCodeTemplateClass is a class that contains the template for generating
-# new setupCode. Objects of this class are used by the function addNecessarySetupCode
-setupCodeTemplateClass <- setRefClass("setupCodeTemplateClass",
-  fields = list(
-    makeName = "ANY",
-    codeTemplate = "ANY",
-    makeCodeSubList = "ANY",
-    makeOtherNames = "ANY",
-    #
-    makeFieldName = "ANY",
-    ctorCodeTemplate = "ANY",
-    makeCtorCodeSubList = "ANY",
-    makeOtherFieldNames = "ANY",
-    makeFieldTypes = "ANY"
-  ),
-  methods = list(
-    initialize = function(...) {
-      makeName <<- \(...) NULL    # at least one of these must be replaced in a derived class
-      makeFieldName <<- \(...) NULL
-      makeOtherNames <<- function(name, argList) {
-        return(character(0))
-      }
-      makeOtherFieldNames <<- function(name, argList) {
-        return(character(0))
-      }
-      callSuper(...)
+# setupCodeTemplate system:
+# This provides a system in keyword replacement to insert new setup code and 
+# new init code into a nimbleFunction class, which will become an nClass.
+#
+# For example, mymodel$calculate(mynodes) may be transformed into 
+# mymodel$calculate(mynodes_instr) where the names (mymodel, mynodes)
+# must be used in a substitute step into a template, and the names 
+# constructed may be long based on argument code, and the in this case
+# a line of new setup code would create mynodes_instr.
+# 
+# In nimble, there only the new setup code, not new init code. And any 
+# setup code would involve creating a new setup output. So the primary setup 
+# output also served as a unique key to determine if the same setup code need 
+# had already been created based on a previous line of source code.
+#
+# Now there are two new needs:
+# 1. An unique key itself. While this might often be the name of a new setup output,
+#.   it need not be and need not represent a setup output. This is useful because
+#.   a particular setupCodeTemplate may create new setup code, and/or new init code,
+#    and (especially in the latter case) may not even create a new object.
+# 2. The names need to be available across these steps. For example, new init code
+#.   might need to know the name of a new setup output.
+#
+# Hence here we will make setupCodeTemplates work differently. Previously they were
+# reference classes, with fields that held functions (unique to each one), but that meant
+# they could not access other functions because only actual methods are given that scoping.
+# R6 classes would make this a little easier but still fussy in that assigning a new function
+# as a member field would require manually setting that functions environment for it to 
+# find other functions. So instead of these powerful class tools, we use simple environments,
+# which are sufficient and easier in this case.
+#
+# Supported elements in a setupCodeTemplate:
+# - makeID(argList, ...): make a unique ID. Defaults to the first name returned from makeSetupNames,
+#.  or name of first field returned from makeFields, or an error if both are empty.
+# - makeSetupNames(argList, ...): make names for new setup outputs. Defaults to character(0)
+#.  (One of makeID or makeSetupNames must be provided.)
+# - makeFields(argList, ...): make named list of new fields for an nClass. These will be 
+#.  fields needed in new init code. Defaults to list()
+# - makeSetupCodeSubList(newSetupNames, argList, ...): make a named list of substitutions for the setup code template. Defaults to list()
+# - setupCodeTemplate: a code object for substitution from makeSetupCodeSubList. Not used if NULL.
+# - makeInitCodeSubList(newFields, newSetupNames, argList, ...): make a named list of substitutions for the init code template. Defaults to list()
+# - initCodeTemplate: a code object for substitution from makeInitCodeSubList. Not used if NULL.
+setupCodeTemplate <- function(...) {
+  args <- list(...)
+  if(is.null(args$makeSetupNames))
+    args$makeSetupNames <- \(argList, ...) character()
+  if(is.null(args$makeID))
+    args$makeID <- \(argList, ...) {
+      ans <- makeSetupNames(argList, ...)
+      if(length(ans) == 0)
+        ans <- makeFields(argList, ...) |> names()
+      if(length(ans) == 0)
+        stop("setupCodeTemplate must have at least one of makeID, makeSetupNames, or the names from makeFields be non-empty.")
+      ans[1]
     }
-  )
-)
+  if(is.null(args$makeFields)) 
+    args$makeFields <- \(argList, ...) list()
+  if(is.null(args$makeSetupCodeSubList))
+    args$makeSetupCodeSubList <- \(newSetupNames, argList, ...) list()
+  if(is.null(args$makeInitCodeSubList))
+    args$makeInitCodeSubList <- \(newFields, newSetupNames, argList, ...) list()
+  env <- new.env(parent = parent.frame())
+  for (nm in names(args)) {
+    env[[nm]] <- args[[nm]]
+    if(is.function(env[[nm]]))
+      environment(env[[nm]]) <- env
+  }
+  return(env)
+}
+
+# R6::R6Class(
+#   classname = "setupCodeTemplateClass",
+#   public = list()
+#   fields = list(
+#     makeName = "ANY",
+#     codeTemplate = "ANY",
+#     makeCodeSubList = "ANY",
+#     makeOtherNames = "ANY",
+#     #
+#     makeFieldName = "ANY",
+#     ctorCodeTemplate = "ANY",
+#     makeCtorCodeSubList = "ANY",
+#     makeOtherFieldNames = "ANY",
+#     makeFieldTypes = "ANY"
+#   ),
+#   methods = list(
+#     initialize = function(...) {
+#       makeName <<- \(...) NULL    # at least one of these must be replaced in a derived class
+#       makeFieldName <<- \(...) NULL
+#       makeOtherNames <<- function(name, argList) {
+#         return(character(0))
+#       }
+#       makeOtherFieldNames <<- function(name, argList) {
+#         return(character(0))
+#       }
+#       callSuper(...)
+#     },
+#     makeName_ = function(...) {
+#       .self$makeName(...)
+#     }
+#   )
+# )
 
 
 ### KEYWORD INFO OBJECTS
@@ -132,6 +205,7 @@ nimSeq_keywordInfo <- keywordInfoClass(
 values_keywordInfo <- keywordInfoClass(
   keyword = "values",
   processor = function(code, nfProc, RCfunProc) {
+    # Probably deprecate with warning or error:
     if (!isCodeArgBlank(code, "accessor")) {
       return(code)
     }
@@ -150,12 +224,16 @@ values_keywordInfo <- keywordInfoClass(
       accessArgList$sortUnique <- FALSE
     }
 
-    accessName <- modelVariableAccessorVector_setupCodeTemplate$makeName(accessArgList)
-    addNecessarySetupCode(accessName, accessArgList, modelVariableAccessorVector_setupCodeTemplate, nfProc)
+    multiCopierNames <- modelMultiCopier_setupCodeTemplate$makeSetupNames(accessArgList)
+    # fields <- modelMultiCopier_setupCodeTemplate$makeFields(accessArgList)
+    addNecessarySetupAndInitCode(
+      modelMultiCopier_setupCodeTemplate,
+      accessArgList, nfProc
+    )
     if (!useAccessorVectorByIndex) {
       newRunCode <- substitute(
-        values(accessor = ACCESS_NAME),
-        list(ACCESS_NAME = as.name(accessName))
+        MCN$getValues(),
+        list(MCN = as.name(multiCopierNames[1]))
       )
     } else {
       newRunCode <- substitute(
@@ -364,9 +442,9 @@ calculate_keywordInfo <- keywordInfoClass(
     if (!withDerivsOutputOnly) { 
       ## This is main case (regular mode), including without derivs at all
       #  and with buildDerivs but not nimDerivs(model$calculate...)
-      nodeFunName <- nodeInstrList_SetupTemplate$makeName(nodeFunVec_ArgList)
-      nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
-      addNecessarySetupCode(nodeFunName, nodeFunFieldName, nodeFunVec_ArgList, nodeInstrList_SetupTemplate, nfProc)
+      nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+      #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+      addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
     } else {
       # To-do: some derivs cases:
       nodeFunName <- nodeFunctionVector_WithDerivsOutput_SetupTemplate$makeName(nodeFunVec_ArgList)
@@ -434,9 +512,9 @@ calculateDiff_keywordInfo <- keywordInfoClass(
       nodeFunVec_ArgList$sortUnique <- FALSE
     }
 
-    nodeFunName <- nodeInstrList_SetupTemplate$makeName(nodeFunVec_ArgList)
-    nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
-    addNecessarySetupCode(nodeFunName, nodeFunFieldName, nodeFunVec_ArgList, nodeInstrList_SetupTemplate, nfProc)
+    nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
     if (!useNodeFunctionVectorByIndex) {
       newRunCode <- substitute(
@@ -492,9 +570,9 @@ simulate_keywordInfo <- keywordInfoClass(
       nodeFunVec_ArgList$sortUnique <- FALSE # If includeData = FALSE, this can trigger error from nodeFunctionVector if nodes does contain data
     }
 
-    nodeFunName <- nodeInstrList_SetupTemplate$makeName(nodeFunVec_ArgList)
-    nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
-    addNecessarySetupCode(nodeFunName, nodeFunFieldName, nodeFunVec_ArgList, nodeInstrList_SetupTemplate, nfProc)
+    nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
     if (!useNodeFunctionVectorByIndex) {
       newRunCode <- substitute(
@@ -549,9 +627,9 @@ getLogProb_keywordInfo <- keywordInfoClass(
       nodeFunVec_ArgList$sortUnique <- FALSE
     }
 
-    nodeFunName <- nodeInstrList_SetupTemplate$makeName(nodeFunVec_ArgList)
-    nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
-    addNecessarySetupCode(nodeFunName, nodeFunFieldName, nodeFunVec_ArgList, nodeInstrList_SetupTemplate, nfProc)
+    nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
     if (!useNodeFunctionVectorByIndex) {
       newRunCode <- substitute(
@@ -871,13 +949,13 @@ dollarSign_keywordInfo <- keywordInfoClass(
     if (class == "symbolModel") {
       singleAccess_ArgList <-
         list(code = code, model = callerCode, var = as.character(code[[3]]))
-      accessName <-
-        singleVarAccess_SetupTemplate$makeName(singleAccess_ArgList)
-      fieldName <-
-        singleVarAccess_SetupTemplate$makeFieldName(singleAccess_ArgList)
-      addNecessarySetupCode(
-        accessName, fieldName,
-        singleAccess_ArgList, singleVarAccess_SetupTemplate, nfProc
+      #accessName <-
+      #  singleVarAccess_SetupTemplate$makeName(singleAccess_ArgList)
+      fields <-
+        singleVarAccess_SetupTemplate$makeFields(singleAccess_ArgList)
+      addNecessarySetupAndInitCode(
+        singleVarAccess_SetupTemplate,
+        singleAccess_ArgList, nfProc
       )
       model_obj <- eval(singleAccess_ArgList$model,
         envir = nfProc$instances[[1]]
@@ -895,7 +973,7 @@ dollarSign_keywordInfo <- keywordInfoClass(
       as_type <- paste0("double(", nDim, ")")
       newRunCode <- substitute(
         nAs(FIELDNAME, ASTYPE),
-        list(FIELDNAME = as.name(fieldName), ASTYPE = as_type)
+        list(FIELDNAME = as.name(names(fields)[1]), ASTYPE = as_type)
       )
       return(newRunCode)
     }
@@ -1375,7 +1453,10 @@ processKeywordCodeMemberFun <- function(code, nfProc, RCfunProc) { ## handle cas
   } ## a case like a[[i]]$b(), which can only be a nimbleFunction list
   else {
     symObj <- nfProc$setupSymTab$getSymbol(as.character(objectPart))
-    if (is.null(symObj)) stop(paste0("In processKeywordCodeMemberFun: not sure what to do with ", deparse(code)))
+    if (is.null(symObj)) {
+      return(code) # nimble errors out in this case, but we pass it through because it may be handled in more different ways.
+#      stop(paste0("In processKeywordCodeMemberFun: not sure what to do with ", deparse(code)))
+    }
     if (inherits(symObj, "symbolModel")) {
       isModel <- TRUE
     }
@@ -1441,57 +1522,87 @@ processKeywords_recurse <- function(code, nfProc = NULL, RCfunProc) {
 
 ##### 	SETUPCODE TEMPLATES
 
-wrtVector_setupCodeTemplate <- setupCodeTemplateClass(
-  makeName = function(argList) {
-    Rname2CppName(paste0(
-      "wrtVec_",
-      deparse(argList$fxn),
-      paste(deparse(argList$wrt), sep = "_"),
-      "_"
-    ))
-  },
-  codeTemplate = quote({
-    WRTVEC <- nimble:::convertWrtArgToIndices(
-      WRT, # code$wrt
-      DERIVMETHODARGS,
-      FXNNAME
-    )
-    if (length(WRTVEC) == 1) {
-      WRTVEC <- c(WRTVEC, -1)
-    }
-  }),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      WRTVEC = as.name(resultName),
-      WRT = argList$wrt,
-      DERIVMETHODARGS = argList$derivMethodArgs,
-      FXNNAME = deparse(argList$fxnCall)
-    ) ## argList$vector)
-  }
-)
+# wrtVector_setupCodeTemplate <- setupCodeTemplateClass(
+#   makeName = function(argList) {
+#     Rname2CppName(paste0(
+#       "wrtVec_",
+#       deparse(argList$fxn),
+#       paste(deparse(argList$wrt), sep = "_"),
+#       "_"
+#     ))
+#   },
+#   codeTemplate = quote({
+#     WRTVEC <- nimble:::convertWrtArgToIndices(
+#       WRT, # code$wrt
+#       DERIVMETHODARGS,
+#       FXNNAME
+#     )
+#     if (length(WRTVEC) == 1) {
+#       WRTVEC <- c(WRTVEC, -1)
+#     }
+#   }),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       WRTVEC = as.name(resultName),
+#       WRT = argList$wrt,
+#       DERIVMETHODARGS = argList$derivMethodArgs,
+#       FXNNAME = deparse(argList$fxnCall)
+#     ) ## argList$vector)
+#   }
+# )
 
-length_char_SetupTemplate <- setupCodeTemplateClass(
-  makeName = function(argList) {
-    Rname2CppName(paste0(paste("length", deparse(argList$string), sep = "_"), "_KNOWN_"))
-  },
-  codeTemplate = quote(LENGTHNAME <- CODE),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      LENGTHNAME = as.name(resultName),
-      CODE = argList$code
-    )
-  }
-)
+# length_char_SetupTemplate <- setupCodeTemplateClass(
+#   makeName = function(argList) {
+#     Rname2CppName(paste0(paste("length", deparse(argList$string), sep = "_"), "_KNOWN_"))
+#   },
+#   codeTemplate = quote(LENGTHNAME <- CODE),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       LENGTHNAME = as.name(resultName),
+#       CODE = argList$code
+#     )
+#   }
+# )
 
-modelVariableAccessorVector_setupCodeTemplate <- setupCodeTemplateClass(
+modelMultiCopier_setupCodeTemplate <- setupCodeTemplate(
   # Note to programmer: required fields of argList are model, nodes and logProb
-  makeName = function(argList) {
-    Rname2CppName(paste(deparse(argList$model), deparse(argList$nodes), "access_logProb", deparse(argList$logProb), "LPO", deparse(argList$logProbOnly), sep = "_"))
+  makeSetupNames = function(argList, ...) {
+    c(Rname2CppName(paste(deparse(argList$model), 
+        deparse(argList$nodes), 
+        "multCopy_logProb", 
+        deparse(argList$logProb), 
+        "LPO", deparse(argList$logProbOnly), sep = "_")),
+      as.character(argList$model)
+      )
   },
-  codeTemplate = quote(ACCESSNAME <- nimble:::modelVariableAccessorVector(MODEL, NODES, logProb = LOGPROB, logProbOnly = LOGPROBONLY)),
-  makeCodeSubList = function(resultName, argList) {
+  initCodeTemplate = quote({
+    cppLiteral(CODE)
+  }),
+  makeInitCodeSubList = function(fields, setupNames, argList, ...) {
+    code <- paste0(setupNames[1], "->init(",setupNames[2],");")
     list(
-      ACCESSNAME = as.name(resultName),
+      CODE = code
+    )
+  },
+  # makeFields = function(argList, ...) {
+  #   fieldName <- Rname2CppName(paste(deparse(argList$model), 
+  #     deparse(argList$nodes), 
+  #     "access_logProb", 
+  #     deparse(argList$logProb), 
+  #     "LPO", 
+  #     deparse(argList$logProbOnly),
+  #     "nCobj", sep = "_"))
+  #   list("nimbleModel:::multiCopier_nClass()") |> setNames(fieldName)
+  # },
+  # Move makeCopierList to nimbleModel
+  setupCodeTemplate = quote(ACCESSNAME <- nimbleModel:::makeMultiCopier(
+    model = MODEL,
+    nodes = NODES,
+    logProb = LOGPROB,
+    logProbOnly = LOGPROBONLY)),
+  makeSetupCodeSubList = function(setupNames, argList, ...) {
+    list(
+      ACCESSNAME = as.name(setupNames[1]),
       MODEL = argList$model,
       NODES = argList$nodes,
       LOGPROB = argList$logProb,
@@ -1500,104 +1611,104 @@ modelVariableAccessorVector_setupCodeTemplate <- setupCodeTemplateClass(
   }
 )
 
-copierVector_setupCodeTemplate <- setupCodeTemplateClass(
-  makeName = function(argList) {
-    Rname2CppName(paste0(argList$accessFrom_name, "_", argList$accessTo_name))
-  },
-  codeTemplate = quote(COPIERNAME <- nimble:::copierVector(ACCESS_FROM, ACCESS_TO, ISMVFROM, ISMVTO)),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      COPIERNAME = as.name(resultName),
-      ACCESS_FROM = as.name(argList$accessFrom_name),
-      ACCESS_TO = as.name(argList$accessTo_name),
-      ISMVFROM = as.integer(argList$isMVfrom),
-      ISMVTO = as.integer(argList$isMVto)
-    )
-  }
-)
+# copierVector_setupCodeTemplate <- setupCodeTemplateClass(
+#   makeName = function(argList) {
+#     Rname2CppName(paste0(argList$accessFrom_name, "_", argList$accessTo_name))
+#   },
+#   codeTemplate = quote(COPIERNAME <- nimble:::copierVector(ACCESS_FROM, ACCESS_TO, ISMVFROM, ISMVTO)),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       COPIERNAME = as.name(resultName),
+#       ACCESS_FROM = as.name(argList$accessFrom_name),
+#       ACCESS_TO = as.name(argList$accessTo_name),
+#       ISMVFROM = as.integer(argList$isMVfrom),
+#       ISMVTO = as.integer(argList$isMVto)
+#     )
+#   }
+# )
 
 
-modelValuesAccessorVector_setupCodeTemplate <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are modelValues, nodes and logProb
-  makeName = function(argList) {
-    Rname2CppName(paste(deparse(argList[["modelValues"]]), deparse(argList$nodes), "access_logProb", deparse(argList$logProb), "LPO", deparse(argList$logProbOnly), deparse(argList$row), sep = "_"))
-  },
-  codeTemplate = quote(ACCESSNAME <- nimble:::modelValuesAccessorVector(MODEL, NODES, logProb = LOGPROB, logProbOnly = LOGPROBONLY)),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      ACCESSNAME = as.name(resultName),
-      MODEL = argList[["modelValues"]],
-      NODES = argList$nodes,
-      LOGPROB = argList$logProb,
-      LOGPROBONLY = argList$logProbOnly
-    )
-  }
-)
+# modelValuesAccessorVector_setupCodeTemplate <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are modelValues, nodes and logProb
+#   makeName = function(argList) {
+#     Rname2CppName(paste(deparse(argList[["modelValues"]]), deparse(argList$nodes), "access_logProb", deparse(argList$logProb), "LPO", deparse(argList$logProbOnly), deparse(argList$row), sep = "_"))
+#   },
+#   codeTemplate = quote(ACCESSNAME <- nimble:::modelValuesAccessorVector(MODEL, NODES, logProb = LOGPROB, logProbOnly = LOGPROBONLY)),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       ACCESSNAME = as.name(resultName),
+#       MODEL = argList[["modelValues"]],
+#       NODES = argList$nodes,
+#       LOGPROB = argList$logProb,
+#       LOGPROBONLY = argList$logProbOnly
+#     )
+#   }
+# )
 
 
-nodeFunctionVector_WithDerivsOutput_SetupTemplate <- setupCodeTemplateClass(
-  makeName = function(argList) {
-    Rname2CppName(paste(deparse(argList$model),
-      deparse(argList$nodes),
-      "nodeFxnVector_WithDerivsOutput", ## The "_derivs_" tag is used later to determine the right class - klugey
-      deparse(argList$includeData),
-      if (argList$sortUnique) "SU" else "notSU",
-      "_derivs_",
-      sep = "_"
-    ))
-  },
-  codeTemplate = quote(
-    NODEFXNVECNAME <- nimble:::nodeFunctionVector_WithDerivsOutputNodes(
-      model = MODEL,
-      calcNodes = CALCNODES,
-      excludeData = EXCLUDEDATA,
-      sortUnique = SORTUNIQUE
-    )
-  ),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      NODEFXNVECNAME = as.name(resultName),
-      MODEL = argList$model,
-      CALCNODES = argList$nodes,
-      EXCLUDEDATA = !argList$includeData,
-      SORTUNIQUE = argList$sortUnique
-    )
-  }
-)
+# nodeFunctionVector_WithDerivsOutput_SetupTemplate <- setupCodeTemplateClass(
+#   makeName = function(argList) {
+#     Rname2CppName(paste(deparse(argList$model),
+#       deparse(argList$nodes),
+#       "nodeFxnVector_WithDerivsOutput", ## The "_derivs_" tag is used later to determine the right class - klugey
+#       deparse(argList$includeData),
+#       if (argList$sortUnique) "SU" else "notSU",
+#       "_derivs_",
+#       sep = "_"
+#     ))
+#   },
+#   codeTemplate = quote(
+#     NODEFXNVECNAME <- nimble:::nodeFunctionVector_WithDerivsOutputNodes(
+#       model = MODEL,
+#       calcNodes = CALCNODES,
+#       excludeData = EXCLUDEDATA,
+#       sortUnique = SORTUNIQUE
+#     )
+#   ),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       NODEFXNVECNAME = as.name(resultName),
+#       MODEL = argList$model,
+#       CALCNODES = argList$nodes,
+#       EXCLUDEDATA = !argList$includeData,
+#       SORTUNIQUE = argList$sortUnique
+#     )
+#   }
+# )
 
 
-nodeFunctionVector_DerivsModelUpdateNodes_SetupTemplate <- setupCodeTemplateClass(
-  makeName = function(argList) {
-    Rname2CppName(paste(deparse(argList$model),
-      deparse(argList[["updateNodes"]]),
-      deparse(argList[["constantNodes"]]),
-      "nodeFxnVector_DerivsModelUpdateNodes_derivs_", ## The "_derivs_" tag is used later to determine the right class - klugey
-      sep = "_"
-    ))
-  },
-  codeTemplate = quote(
-    NODEFXNVECNAME <- nimble:::nodeFunctionVector_DerivsModelUpdateNodes(
-      model = MODEL,
-      updateNodes = UPDATENODES,
-      constantNodes = CONSTANTNODES
-    )
-  ),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      NODEFXNVECNAME = as.name(resultName),
-      MODEL = argList$model,
-      UPDATENODES = argList[["updateNodes"]],
-      CONSTANTNODES = argList[["constantNodes"]]
-    )
-  }
-)
+# nodeFunctionVector_DerivsModelUpdateNodes_SetupTemplate <- setupCodeTemplateClass(
+#   makeName = function(argList) {
+#     Rname2CppName(paste(deparse(argList$model),
+#       deparse(argList[["updateNodes"]]),
+#       deparse(argList[["constantNodes"]]),
+#       "nodeFxnVector_DerivsModelUpdateNodes_derivs_", ## The "_derivs_" tag is used later to determine the right class - klugey
+#       sep = "_"
+#     ))
+#   },
+#   codeTemplate = quote(
+#     NODEFXNVECNAME <- nimble:::nodeFunctionVector_DerivsModelUpdateNodes(
+#       model = MODEL,
+#       updateNodes = UPDATENODES,
+#       constantNodes = CONSTANTNODES
+#     )
+#   ),
+#   makeCodeSubList = function(setupNames, argList) {
+#     list(
+#       NODEFXNVECNAME = as.name(setupNames[1]),
+#       MODEL = argList$model,
+#       UPDATENODES = argList[["updateNodes"]],
+#       CONSTANTNODES = argList[["constantNodes"]]
+#     )
+#   }
+# )
 
 # Formerly nodeFunctionVector_SetupTemplate
-nodeInstrList_SetupTemplate <- setupCodeTemplateClass(
+nodeInstrList_SetupTemplate <- setupCodeTemplate(
   # convert calculate(model, nodes) to
   # setup code: model_nodes_instr <- nimbleModel::makeInstrList(model, nodes)
   # run code: model$calculate(model_nodes_instr)
-  makeName = function(argList) {
+  makeSetupNames = function(argList, ...) {
     Rname2CppName(paste(deparse(argList$model),
       deparse(argList$nodes),
       "instrList_incDat",
@@ -1607,7 +1718,7 @@ nodeInstrList_SetupTemplate <- setupCodeTemplateClass(
       sep = "_"
     ))
   },
-  codeTemplate = quote(
+  setupCodeTemplate = quote(
     INSTRLISTNAME <- nimbleModel:::makeInstrList(
       model = MODEL,
       input = NODES
@@ -1618,9 +1729,9 @@ nodeInstrList_SetupTemplate <- setupCodeTemplateClass(
       #errorContext = ERRORCONTEXT
     )
   ),
-  makeCodeSubList = function(resultName, argList) {
+  makeSetupCodeSubList = function(setupNames, argList, ...) {
     list(
-      INSTRLISTNAME = as.name(resultName),
+      INSTRLISTNAME = as.name(setupNames[1]),
       MODEL = argList$model,
       NODES = argList$nodes
       #,
@@ -1632,228 +1743,223 @@ nodeInstrList_SetupTemplate <- setupCodeTemplateClass(
   }
 )
 
-nodeFunctionVector_SetupTemplate_old <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are model, nodes and includeData
-  makeName = function(argList) {
-    Rname2CppName(paste(deparse(argList$model),
-      deparse(argList$nodes),
-      "nodeFxnVector_includeData",
-      deparse(argList$includeData),
-      if (argList$sortUnique) "SU" else "notSU",
-      if (is.null(argList$wrtNodes)) "" else "_derivs_",
-      sep = "_"
-    ))
-  },
-  codeTemplate = quote(
-    NODEFXNVECNAME <- nimble:::nodeFunctionVector(
-      model = MODEL,
-      nodeNames = NODES,
-      wrtNodes = WRTNODES,
-      excludeData = EXCLUDEDATA,
-      sortUnique = SORTUNIQUE,
-      errorContext = ERRORCONTEXT
-    )
-  ),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      NODEFXNVECNAME = as.name(resultName),
-      MODEL = argList$model,
-      NODES = argList$nodes,
-      WRTNODES = argList$wrtNodes,
-      EXCLUDEDATA = !argList$includeData,
-      SORTUNIQUE = argList$sortUnique,
-      ERRORCONTEXT = argList$errorContext
-    )
-  }
-)
+# nodeFunctionVector_SetupTemplate_old <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are model, nodes and includeData
+#   makeName = function(argList) {
+#     Rname2CppName(paste(deparse(argList$model),
+#       deparse(argList$nodes),
+#       "nodeFxnVector_includeData",
+#       deparse(argList$includeData),
+#       if (argList$sortUnique) "SU" else "notSU",
+#       if (is.null(argList$wrtNodes)) "" else "_derivs_",
+#       sep = "_"
+#     ))
+#   },
+#   codeTemplate = quote(
+#     NODEFXNVECNAME <- nimble:::nodeFunctionVector(
+#       model = MODEL,
+#       nodeNames = NODES,
+#       wrtNodes = WRTNODES,
+#       excludeData = EXCLUDEDATA,
+#       sortUnique = SORTUNIQUE,
+#       errorContext = ERRORCONTEXT
+#     )
+#   ),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       NODEFXNVECNAME = as.name(resultName),
+#       MODEL = argList$model,
+#       NODES = argList$nodes,
+#       WRTNODES = argList$wrtNodes,
+#       EXCLUDEDATA = !argList$includeData,
+#       SORTUNIQUE = argList$sortUnique,
+#       ERRORCONTEXT = argList$errorContext
+#     )
+#   }
+# )
 
 
-paramInfo_SetupTemplate <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are model, node and param
-  makeName = function(argList) {
-    Rname2CppName(paste(deparse(argList$model), deparse(argList$node), deparse(argList$param), "paramInfo", sep = "_"))
-  },
-  makeOtherNames = function(name, argList) {
-    Rname2CppName(paste0(name, "_ID"))
-  },
-  codeTemplate = quote({
-    PARAMINFONAME <- nimble:::makeParamInfo(model = MODEL, nodes = NODE, param = PARAM, vector = HASINDEX)
-    PARAMIDNAME <- PARAMINFONAME$paramID
-    PARAMINFONAME$paramID <- NULL
-  }),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      PARAMINFONAME = as.name(resultName),
-      PARAMIDNAME = as.name(paste0(resultName, "_ID")),
-      MODEL = argList$model,
-      NODE = argList$node,
-      PARAM = argList$param,
-      HASINDEX = argList$hasIndex
-    )
-  }
-)
+# paramInfo_SetupTemplate <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are model, node and param
+#   makeName = function(argList) {
+#     Rname2CppName(paste(deparse(argList$model), deparse(argList$node), deparse(argList$param), "paramInfo", sep = "_"))
+#   },
+#   makeOtherNames = function(name, argList) {
+#     Rname2CppName(paste0(name, "_ID"))
+#   },
+#   codeTemplate = quote({
+#     PARAMINFONAME <- nimble:::makeParamInfo(model = MODEL, nodes = NODE, param = PARAM, vector = HASINDEX)
+#     PARAMIDNAME <- PARAMINFONAME$paramID
+#     PARAMINFONAME$paramID <- NULL
+#   }),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       PARAMINFONAME = as.name(resultName),
+#       PARAMIDNAME = as.name(paste0(resultName, "_ID")),
+#       MODEL = argList$model,
+#       NODE = argList$node,
+#       PARAM = argList$param,
+#       HASINDEX = argList$hasIndex
+#     )
+#   }
+# )
 
-boundInfo_SetupTemplate <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are model, node and param
-  makeName = function(argList) {
-    Rname2CppName(paste(deparse(argList$model), deparse(argList$node), deparse(argList$bound), "boundInfo", sep = "_"))
-  },
-  makeOtherNames = function(name, argList) {
-    Rname2CppName(paste0(name, "_ID"))
-  },
-  codeTemplate = quote({
-    BOUNDINFONAME <- nimble:::makeBoundInfo(MODEL, NODE, BOUND)
-    BOUNDIDNAME <- BOUNDINFONAME$boundID
-    BOUNDINFONAME$boundID <- NULL
-  }),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      BOUNDINFONAME = as.name(resultName),
-      BOUNDIDNAME = as.name(paste0(resultName, "_ID")),
-      MODEL = argList$model,
-      NODE = argList$node,
-      BOUND = argList$bound
-    )
-  }
-)
+# boundInfo_SetupTemplate <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are model, node and param
+#   makeName = function(argList) {
+#     Rname2CppName(paste(deparse(argList$model), deparse(argList$node), deparse(argList$bound), "boundInfo", sep = "_"))
+#   },
+#   makeOtherNames = function(name, argList) {
+#     Rname2CppName(paste0(name, "_ID"))
+#   },
+#   codeTemplate = quote({
+#     BOUNDINFONAME <- nimble:::makeBoundInfo(MODEL, NODE, BOUND)
+#     BOUNDIDNAME <- BOUNDINFONAME$boundID
+#     BOUNDINFONAME$boundID <- NULL
+#   }),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       BOUNDINFONAME = as.name(resultName),
+#       BOUNDIDNAME = as.name(paste0(resultName, "_ID")),
+#       MODEL = argList$model,
+#       NODE = argList$node,
+#       BOUND = argList$bound
+#     )
+#   }
+# )
 
-allLHSNodes_SetupTemplate <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are model
-  makeName = function(argList) {
-    Rname2CppName(paste("allLHSnodes", deparse(argList$model), sep = "_"))
-  },
-  codeTemplate = quote(NODENAMES <- MODEL$getMaps("nodeNamesLHSall")),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      NODENAMES = as.name(resultName),
-      MODEL = argList$model
-    )
-  }
-)
+# allLHSNodes_SetupTemplate <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are model
+#   makeName = function(argList) {
+#     Rname2CppName(paste("allLHSnodes", deparse(argList$model), sep = "_"))
+#   },
+#   codeTemplate = quote(NODENAMES <- MODEL$getMaps("nodeNamesLHSall")),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       NODENAMES = as.name(resultName),
+#       MODEL = argList$model
+#     )
+#   }
+# )
 
-allModelNodes_SetupTemplate <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are model
-  makeName = function(argList) {
-    Rname2CppName(paste("allModelNodes", deparse(argList$model), sep = "_"))
-  },
-  codeTemplate = quote(NODENAMES <- MODEL$getVarNames()),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      NODENAMES = as.name(resultName),
-      MODEL = argList$model
-    )
-  }
-)
+# allModelNodes_SetupTemplate <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are model
+#   makeName = function(argList) {
+#     Rname2CppName(paste("allModelNodes", deparse(argList$model), sep = "_"))
+#   },
+#   codeTemplate = quote(NODENAMES <- MODEL$getVarNames()),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       NODENAMES = as.name(resultName),
+#       MODEL = argList$model
+#     )
+#   }
+# )
 
-allModelValuesVars_SetupTemplate <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are modelValues
-  makeName = function(argList) {
-    Rname2CppName(paste("allMVVars", deparse(argList$modelValues), sep = "_"))
-  },
-  codeTemplate = quote(NODENAMES <- MODELVALUES$getVarNames(includeLogProb = FALSE)),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      NODENAMES = as.name(resultName),
-      MODELVALUES = argList$modelValues
-    )
-  }
-)
+# allModelValuesVars_SetupTemplate <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are modelValues
+#   makeName = function(argList) {
+#     Rname2CppName(paste("allMVVars", deparse(argList$modelValues), sep = "_"))
+#   },
+#   codeTemplate = quote(NODENAMES <- MODELVALUES$getVarNames(includeLogProb = FALSE)),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       NODENAMES = as.name(resultName),
+#       MODELVALUES = argList$modelValues
+#     )
+#   }
+# )
 
-code2Name_fromArgList <- function(argList) {
-  Rname2CppName(deparse(argList$code))
-}
-
-singleVarAccess_SetupTemplate <- setupCodeTemplateClass(
+singleVarAccess_SetupTemplate <- setupCodeTemplate(
   # Note to progammer: required fields of argList are 'code' (raw code to be processed), model and var
-  makeName = \(...) NULL, # No need for a new setup output
-  makeFieldName = code2Name_fromArgList,
-  ctorCodeTemplate = quote({
+  makeFields = function(argList, ...) {
+    fieldName <- Rname2CppName(deparse(argList$code))
+    list("ETaccessor") |> setNames(fieldName)
+  },
+  initCodeTemplate = quote({
     FIELDNAME <- MODEL[[VAR]]
   }),
-  makeCtorCodeSubList = function(fieldName, argList) {
+  makeInitCodeSubList = function(fields, setupNames, argList, ...) {
     list(
-      FIELDNAME = as.name(fieldName),
+      FIELDNAME = as.name(names(fields)[1]),
       MODEL = argList$model,
       VAR = argList$var
     )
-  },
-  makeFieldTypes = function(fieldName, argList) {
-    list("ETaccessor") |> setNames(fieldName)
   }
 )
 
-singleModelIndexAccess_SetupTemplate <- setupCodeTemplateClass(
-  # Note to progammer: required fields of argList are code, varAndIndices, node (character) and model(expression)
-  makeOtherNames = function(name, argList) {
-    paste0(name, "_flatIndex")
-  },
-  makeName = code2Name_fromArgList,
-  codeTemplate = quote({
-    VARANDINDICES <- nimble:::nimbleInternalFunctions$getVarAndIndices(NODEVARNAME)
-    NEWVARNAME <- as.character(VARANDINDICES$varName)
-    MFLATINDEX <- nimble:::varAndIndices2flatIndex(VARANDINDICES, MODELVAREXPR$getVarInfo(NEWVARNAME))
-    VARACCESSOR <- nimble:::singleVarAccess(MODELVAREXPR, NEWVARNAME, useSingleIndex = TRUE)
-  }),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      VARACCESSOR = as.name(resultName),
-      VARANDINDICES = as.name(paste0(resultName, "_varAndIndices")),
-      NEWVARNAME = as.name(paste0(resultName, "_newVarName")),
-      NODEVARNAME = argList$nodeExpr,
-      MFLATINDEX = as.name(paste0(resultName, "_flatIndex")),
-      MODELVAREXPR = argList$model
-    )
-  }
-)
+# singleModelIndexAccess_SetupTemplate <- setupCodeTemplateClass(
+#   # Note to progammer: required fields of argList are code, varAndIndices, node (character) and model(expression)
+#   makeOtherNames = function(name, argList) {
+#     paste0(name, "_flatIndex")
+#   },
+#   makeName = code2Name_fromArgList,
+#   codeTemplate = quote({
+#     VARANDINDICES <- nimble:::nimbleInternalFunctions$getVarAndIndices(NODEVARNAME)
+#     NEWVARNAME <- as.character(VARANDINDICES$varName)
+#     MFLATINDEX <- nimble:::varAndIndices2flatIndex(VARANDINDICES, MODELVAREXPR$getVarInfo(NEWVARNAME))
+#     VARACCESSOR <- nimble:::singleVarAccess(MODELVAREXPR, NEWVARNAME, useSingleIndex = TRUE)
+#   }),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       VARACCESSOR = as.name(resultName),
+#       VARANDINDICES = as.name(paste0(resultName, "_varAndIndices")),
+#       NEWVARNAME = as.name(paste0(resultName, "_newVarName")),
+#       NODEVARNAME = argList$nodeExpr,
+#       MFLATINDEX = as.name(paste0(resultName, "_flatIndex")),
+#       MODELVAREXPR = argList$model
+#     )
+#   }
+# )
 
-map_SetupTemplate <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are code, model
-  makeName = code2Name_fromArgList,
-  makeOtherNames = function(name, argList) {
-    output <- character()
-    output[1] <- paste0(name, "_strides")
-    output[2] <- paste0(name, "_offset")
-    output[3] <- paste0(name, "_sizes")
-    return(output)
-  },
-  codeTemplate = quote({
-    VARANDINDICES <- nimble:::nimbleInternalFunctions$getVarAndIndices(NODEVARNAME)
-    NEWVARNAME <- as.character(VARANDINDICES$varName)
-    map_SetupTemplate_vi <- MODEL$getVarInfo(NEWVARNAME)
-    map_SetupTemplate_mapParts <- nimble:::varAndIndices2mapParts(VARANDINDICES, map_SetupTemplate_vi$maxs, map_SetupTemplate_vi$nDim)
-    MSTRIDES <- map_SetupTemplate_mapParts$strides
-    MOFFSET <- map_SetupTemplate_mapParts$offset
-    MSIZES <- map_SetupTemplate_mapParts$sizes
-    VARACCESSOR <- nimble:::singleVarAccess(model, NEWVARNAME)
-  }),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      VARACCESSOR = as.name(resultName),
-      NODEVARNAME = argList$nodeExpr,
-      NEWVARNAME = as.name(paste0(resultName, "_newVarName")),
-      VARANDINDICES = as.name(paste0(resultName, "_varAndIndices")),
-      MODEL = argList$model,
-      MSTRIDES = as.name(paste0(resultName, "_strides")),
-      MOFFSET = as.name(paste0(resultName, "_offset")),
-      MSIZES = as.name(paste0(resultName, "_sizes"))
-    )
-  }
-)
+# map_SetupTemplate <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are code, model
+#   makeName = code2Name_fromArgList,
+#   makeOtherNames = function(name, argList) {
+#     output <- character()
+#     output[1] <- paste0(name, "_strides")
+#     output[2] <- paste0(name, "_offset")
+#     output[3] <- paste0(name, "_sizes")
+#     return(output)
+#   },
+#   codeTemplate = quote({
+#     VARANDINDICES <- nimble:::nimbleInternalFunctions$getVarAndIndices(NODEVARNAME)
+#     NEWVARNAME <- as.character(VARANDINDICES$varName)
+#     map_SetupTemplate_vi <- MODEL$getVarInfo(NEWVARNAME)
+#     map_SetupTemplate_mapParts <- nimble:::varAndIndices2mapParts(VARANDINDICES, map_SetupTemplate_vi$maxs, map_SetupTemplate_vi$nDim)
+#     MSTRIDES <- map_SetupTemplate_mapParts$strides
+#     MOFFSET <- map_SetupTemplate_mapParts$offset
+#     MSIZES <- map_SetupTemplate_mapParts$sizes
+#     VARACCESSOR <- nimble:::singleVarAccess(model, NEWVARNAME)
+#   }),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       VARACCESSOR = as.name(resultName),
+#       NODEVARNAME = argList$nodeExpr,
+#       NEWVARNAME = as.name(paste0(resultName, "_newVarName")),
+#       VARANDINDICES = as.name(paste0(resultName, "_varAndIndices")),
+#       MODEL = argList$model,
+#       MSTRIDES = as.name(paste0(resultName, "_strides")),
+#       MOFFSET = as.name(paste0(resultName, "_offset")),
+#       MSIZES = as.name(paste0(resultName, "_sizes"))
+#     )
+#   }
+# )
 
-singleModelValuesAccessor_SetupTemplate <- setupCodeTemplateClass(
-  # Note to programmer: required fields of argList are modelValues, var, row, code
-  makeName = code2Name_fromArgList,
-  codeTemplate = quote({
-    MVACCESS <- nimble:::singleModelValuesAccess(MODELVALUES, VAR)
-  }),
-  makeCodeSubList = function(resultName, argList) {
-    list(
-      MVACCESS = as.name(resultName),
-      MODELVALUES = argList$modelValues,
-      VAR = argList$var
-    )
-  }
-)
+# singleModelValuesAccessor_SetupTemplate <- setupCodeTemplateClass(
+#   # Note to programmer: required fields of argList are modelValues, var, row, code
+#   makeName = code2Name_fromArgList,
+#   codeTemplate = quote({
+#     MVACCESS <- nimble:::singleModelValuesAccess(MODELVALUES, VAR)
+#   }),
+#   makeCodeSubList = function(resultName, argList) {
+#     list(
+#       MVACCESS = as.name(resultName),
+#       MODELVALUES = argList$modelValues,
+#       VAR = argList$var
+#     )
+#   }
+# )
 
 
 #### KEYWORD PROCESSING UTILITIES
@@ -1865,63 +1971,62 @@ isCodeArgBlank <- function(code, arg) {
 }
 
 # Utility functions to make things a little neater
-isSetupCodeGenerated <- function(name = NULL, fieldName = NULL, nfProc) {
-  if (is.null(name) && is.null(fieldName)) {
-    stop("In isSetupCodeGenerated, at least one of name and fieldName must be non-NULL.")
+isKeywordCaseHandled <- function(template, argList, nfProc) {
+  uniqueID <- template$makeID(argList)
+  if(is.null(uniqueID)) {
+    stop("In isKeywordCaseHandled, template$makeID returned NULL.")
   }
-  setupCodeDone <-
-    if (is.null(name)) {
-      FALSE
-    } else {
-      name %in% nfProc$newSetupOutputNames
-    }
-  fieldDone <-
-    if (is.null(fieldName)) {
-      FALSE
-    } else {
-      fieldName %in% nfProc$newFieldNames
-    }
-  return(setupCodeDone || fieldDone)
+  uniqueID %in% nfProc$keywordCaseIDs
 }
-addSetupCodeNames <- function(name, otherNames, nfProc) {
-  nfProc$newSetupOutputNames <- c(name, otherNames, nfProc$newSetupOutputNames)
-}
-addFieldNames <- function(fieldName, otherFieldNames, nfProc) {
-  nfProc$newFieldNames <- c(fieldName, otherFieldNames, nfProc$newFieldNames)
-}
-addBlockFromCppName <- function(name, nfProc) {
-  nfProc$blockFromCppNames <- c(name, nfProc$blockFromCppNames)
-}
-addNewCode <- function(name, subList, template, nfProc) {
-  nfProc$newSetupCode[[name]] <- eval(substitute(substitute(TEMPLATE, subList), list(TEMPLATE = template$codeTemplate)))
-}
-addNewInitCode <- function(fieldName, subList, template, nfProc) {
-  nfProc$new_init_code[[fieldName]] <- eval(substitute(substitute(TEMPLATE, subList), list(TEMPLATE = template$ctorCodeTemplate)))
-}
-addFieldTypes <- function(fieldName, subList, template, nfProc) {
-  fieldTypes <- template$makeFieldTypes(fieldName, subList)
-  nfProc$newFieldTypes <- c(nfProc$newFieldTypes, fieldTypes)
-}
+# addSetupCodeNames <- function(name, otherNames, nfProc) {
+#   nfProc$newSetupOutputNames <- c(name, otherNames, nfProc$newSetupOutputNames)
+# }
+# addFieldNames <- function(fieldName, otherFieldNames, nfProc) {
+#   nfProc$newFieldNames <- c(fieldName, otherFieldNames, nfProc$newFieldNames)
+# }
+# addBlockFromCppName <- function(name, nfProc) {
+#   nfProc$blockFromCppNames <- c(name, nfProc$blockFromCppNames)
+# }
+# addNewCode <- function(name, subList, template, nfProc) {
+#   nfProc$newSetupCode[[name]] <- eval(substitute(substitute(TEMPLATE, subList), list(TEMPLATE = template$codeTemplate)))
+# }
+# addNewInitCode <- function(fieldName, subList, template, nfProc) {
+#   nfProc$new_init_code[[fieldName]] <- eval(substitute(substitute(TEMPLATE, subList), list(TEMPLATE = template$ctorCodeTemplate)))
+# }
+# addFieldTypes <- function(fieldName, subList, template, nfProc) {
+#   fieldTypes <- template$makeFieldTypes(fieldName, subList)
+#   nfProc$newFieldTypes <- c(nfProc$newFieldTypes, fieldTypes)
+# }
 
-addNecessarySetupCode <- function(
-  name = NULL, fieldName = NULL,
-  argList, template,
+addNecessarySetupAndInitCode <- function(
+  template, argList,
   nfProc, allowToCpp = TRUE
 ) {
-  if (is.null(nfProc)) stop("Trying to add setup code for a nimbleFunction with no setup code.")
-  if (!isSetupCodeGenerated(name, fieldName, nfProc)) {
-    if (!is.null(name)) {
-      addSetupCodeNames(name, template$makeOtherNames(name, argList), nfProc)
-      subList <- template$makeCodeSubList(name, argList)
-      addNewCode(name, subList, template, nfProc)
-      if (!allowToCpp) addBlockFromCppName(name, nfProc) ## ignores makeOtherNames for now
+  if (is.null(nfProc)) 
+    stop("Trying to add setup code for a nimbleFunction with no setup code.")
+  if (!isKeywordCaseHandled(template, argList, nfProc)) {
+    uniqueID <- template$makeID(argList)
+    newSetupNames <- template$makeSetupNames(argList)
+    nfProc$newSetupOutputNames <- c(newSetupNames, nfProc$newSetupOutputNames)
+    if(!is.null(template$setupCodeTemplate)) {
+      subList <- template$makeSetupCodeSubList(newSetupNames, argList)
+      nfProc$newSetupCode[[uniqueID]] <- 
+        eval(substitute(substitute(TEMPLATE, subList), 
+            list(TEMPLATE = template$setupCodeTemplate)))
+      # allowToCpp feature may become unnecessary.
+      if(!allowToCpp)
+        nfProc$blockFromCppNames <- c(newSetupNames[1],
+                                      nfProc$blockFromCppNames)
     }
-    if (!is.null(fieldName)) {
-      addFieldNames(fieldName, template$makeOtherFieldNames(fieldName, argList), nfProc)
-      subList <- template$makeCtorCodeSubList(fieldName, argList)
-      addNewInitCode(fieldName, subList, template, nfProc)
-      addFieldTypes(fieldName, subList, template, nfProc)
+    newFields <- template$makeFields(argList)
+    nfProc$newFields <- c(newFields, nfProc$newFields)
+    if (!is.null(template$initCodeTemplate)) {
+      subList <- template$makeInitCodeSubList(newFields, newSetupNames, argList)
+        nfProc$newInitCode[[uniqueID]] <- 
+          eval(substitute(substitute(TEMPLATE, subList),
+                list(TEMPLATE = template$initCodeTemplate)))
     }
+    nfProc$keywordCaseIDs <- c(uniqueID, nfProc$keywordCaseIDs)
   }
 }
 

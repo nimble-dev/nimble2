@@ -20,6 +20,19 @@ make_model_calls_methods <- function(code, symTab, auxEnv, info) {
   NULL
 }
 
+values_LAT <- function(code, symTab, auxEnv, info) {
+  # convert values(model, nodes) to model$values(nodes)
+  browser()
+  new_code <- substitute(
+    `method->(COPIERS, "copyIntoVector")`,
+    list(COPIERS = as.name(code$args[[1]]$name))
+  )
+  new_expr <- nCompiler::nParse(new_code)
+  nCompiler:::replaceArgInCaller(code, new_expr)
+  nCompiler:::compile_normalizeCalls(new_expr, symTab, auxEnv)
+  NULL
+}
+
 nimble_nCompiler_opDefs <- list(
   nimRound = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "round")),
   nimNumeric = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "nNumeric")),
@@ -36,7 +49,9 @@ nimble_nCompiler_opDefs <- list(
   model_calculate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_calculateDiff = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_simulate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
-  model_getLogProb = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods))
+  model_getLogProb = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  values = list(matchDef = function(model, nodes) {}, 
+    labelAbstractTypes = list(handler = "values_LAT"))
 )
 
 proxyNimbleProjectClass <- R6::R6Class(
@@ -204,7 +219,7 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   # Call nCompile
   # Build and populate objects
 
-  if (.GlobalEnv$BROWSE_COMPILE_NIMBLE) browser()
+  if (isTRUE(.GlobalEnv$BROWSE_COMPILE_NIMBLE)) browser()
 
   project$process()
   nComp_units <- project$get_nComp_units()
@@ -216,7 +231,7 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   })
   nCompile_results <- do.call(nCompiler::nCompile, c(nComp_units, list(returnList = TRUE)))
 
-  if (.GlobalEnv$BROWSE_COMPILE_NIMBLE) browser()
+  if (isTRUE(.GlobalEnv$BROWSE_COMPILE_NIMBLE)) browser()
 
   compiled_units <- vector("list", length = length(units))
 

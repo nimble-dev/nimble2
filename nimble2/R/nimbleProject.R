@@ -278,8 +278,8 @@ nimbleProjectClass <- R6::R6Class(
       }
       message("Determining setup output names during populate step may be incomplete.")
       # Two categories of setup outputs:
-      setupOutputNames <- nf_getSetupOutputNames(NFgens[[generatorName]]$nfGenerator)
-      newSetupOutputNames <- NFgens[[generatorName]]$nfProc$newSetupOutputNames
+      setupOutputNames <- NFgens[[generatorName]]$nfProc$updatedSetupOutputNames # nf_getSetupOutputNames(NFgens[[generatorName]]$nfGenerator)
+      newSetupOutputNames <- NFgens[[generatorName]]$nfProc$updatedNewSetupOutputNames
       
       # Use setupSymTab to determine special types like models
       setupSymTab <- NFgens[[generatorName]]$nfProc$setupSymTab

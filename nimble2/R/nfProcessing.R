@@ -5,6 +5,9 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
     nfGenerator = "ANY", ## 'function',
     #    compileInfos = "ANY", ## list of RCfunctionCompileClass objects
     origMethods = "ANY", ## list of original methods
+    origSetupOutputNames = "ANY", ## character vector of original setup output names
+    updatedSetupOutputNames = "ANY",
+    declaredSetupOutputNames = "ANY", ## character vector of setup output names declared by setupOutput()
     matchedCodes = "ANY",
     processedCodes = "ANY",
     #    RCfunProcs = "ANY", ## list of RCfunProcessing  or RCvirtualFunProcessing objects
@@ -45,6 +48,9 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
       }
       origMethods <<- nf_getMethodList(nfGenerator)
       origMethodNames <- names(origMethods)
+      origSetupOutputNames <<- nf_getSetupOutputNames(nfGenerator)
+      updatedSetupOutputNames <<- origSetupOutputNames
+      declaredSetupOutputNames <<- getFunctionEnvVar(nfGenerator, "declaredSetupOutputNames")
       # To-do: Manage a full and complete set of operator names, keywords, etc.
       conflictedNames <- origMethodNames %in% names(nCompiler:::operatorDefEnv)
       # conflictedNames <- origMethodNames %in% c(
@@ -118,13 +124,14 @@ nfProcessing <- setRefClass("nfProcessing",
     neededTypes = "ANY", ## list of symbols for non-trivial types that will be needed for compilation, such as derived models or modelValues
     neededObjectNames = "ANY", ## character vector of the names of objects such as models or modelValues that need to exist during C++ instantiation and population so their contents can be pointed to
     newSetupOutputNames = "ANY", ## character vector of names of objects created by newSetupCode from "keyword processing" (which also adds to this vector)
+    updatedNewSetupOutputNames = "ANY",
     blockFromCppNames = "ANY", ## character vector of names of setup outputs that should not be propagated to C++
     newSetupCode = "ANY", ## list of lines of setup code populated by keyword processing
     newSetupCodeOneExpr = "ANY", ## all lines of new setup code put into one expression for evaluation
     instances_newSetupEnvs = "ANY",
-    newFieldNames = "ANY",
-    newFieldTypes = "ANY",
-    new_init_code = "ANY",
+    newFields = "ANY",
+    keywordCaseIDs = "ANY",
+    newInitCode = "ANY",
     cpp_init_ = "ANY",
     nClassGen = "ANY"
   ),
@@ -156,11 +163,12 @@ nfProcessing <- setRefClass("nfProcessing",
         instances_newSetupEnvs <<- vector("list", length(instances))
       }
       newSetupOutputNames <<- character()
+      updatedNewSetupOutputNames <<- character()
       blockFromCppNames <<- character()
       newSetupCode <<- list()
-      newFieldNames <<- character()
-      newFieldTypes <<- list()
-      new_init_code <<- list()
+      newFields <<- list()
+      keywordCaseIDs <<- character()
+      newInitCode <<- list()
     },
     getSymbolTable = function() setupSymTab,
     getMethodInterfaces = function() origMethods,
@@ -305,7 +313,7 @@ nfProcessing <- setRefClass("nfProcessing",
 
 nfProcessing$methods(build_cpp_init_ = function() {
   init_function <- function() {}
-  body(init_function) <- as.call(c(list(as.name("{")), .self$new_init_code))
+  body(init_function) <- as.call(c(list(as.name("{")), .self$newInitCode))
   init_ <- nFunction(
     fun = init_function,
     compileInfo = list(constructor = FALSE) # This is not an actual constructor; showing that clearly here.
@@ -326,9 +334,15 @@ nfProcessing$methods(build_nClassGen = function() {
     sym <- members[[mn]]
     if (inherits(sym, "symbolNimbleSpecial")) {
       members[[mn]] <- NULL
+      next
     }
     if(!is.null(sym$declaration)) {
       members[[mn]] <- sym$declaration
+      next
+    }
+    if(is.character(sym$type) && length(sym$type) > 0 && sym$type[1] == "Ronly") {
+      members[[mn]] <- NULL
+      next
     }
   }
   classname <- "make_this_random"
@@ -343,7 +357,7 @@ nfProcessing$methods(build_nClassGen = function() {
       env = environment(nfGenerator)
     ),
     list(
-      MEMBERS = c(members, .self$newFieldTypes),
+      MEMBERS = c(members, .self$newFields),
       METHODS = c(new_methods, initL),
       CLASSNAME = classname
     )
@@ -420,7 +434,7 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
     #   name = ".self",
     #   nfProc = .self
     # ))
-    outputNames <- c(outputNames, nf_getSetupOutputNames(nfGenerator))
+    outputNames <- c(outputNames, origSetupOutputNames) #nf_getSetupOutputNames(nfGenerator))
     if (length(outputNames) > 0) outputNames <- unique(outputNames)
   }
   if (setupNew) {
@@ -440,15 +454,24 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
     ## that are really created as intermediates for others that are really needed
     ## during the keyword processing, the newSetupOutputNames is used for
     ## bookkeeping, so it would not be trivial to remove them at an earlier stage.
-
-    origSetupOutputs <- nf_getSetupOutputNames(nfGenerator)
-    declaredSetupOutputs <- getFunctionEnvVar(nfGenerator, "declaredSetupOutputNames")
+    origSetupOutputs <- origSetupOutputNames #nf_getSetupOutputNames(nfGenerator)
+    declaredSetupOutputs <- declaredSetupOutputNames # getFunctionEnvVar(nfGenerator, "declaredSetupOutputNames")
     origSetupOutputs <- setdiff(origSetupOutputs, declaredSetupOutputs)
     newRcodeList <- c(processedCodes, list(nCompiler::NFinternals(cpp_init_)$code))
     # newRcodeList <- lapply(compileInfos, `[[`, "newRcode")
     allNamesInCodeAfterKeywordProcessing <- unique(unlist(lapply(newRcodeList, all.names)))
-    origSetupOutputNamesToKeep <- intersect(allNamesInCodeAfterKeywordProcessing, origSetupOutputs) ## this loses mv!
-    origSetupOutputNamesNotNeeded <- setdiff(origSetupOutputs, origSetupOutputNamesToKeep) ## order matters
+
+    # We allow a keyword processor to include an orig setup output name in its "new"
+    # setup output names to flag that it should be kept.
+    # We need to identify those, mark them as needed, and not re-process them below.
+    newSetupOutputNamesInOrig <- intersect(newSetupOutputNames, origSetupOutputs)
+
+    origSetupOutputNamesToKeep <- intersect(
+                              c(allNamesInCodeAfterKeywordProcessing, newSetupOutputNamesInOrig),
+                              origSetupOutputs) ## this loses mv!
+
+
+    origSetupOutputNamesNotNeeded <- setdiff(origSetupOutputs, origSetupOutputNamesToKeep)
     for (nameNotNeeded in origSetupOutputNamesNotNeeded) {
       thisSym <- setupSymTab$getSymbol(nameNotNeeded)
       if (!is.null(thisSym)) {
@@ -457,8 +480,12 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
         }
       } ## must keep modelValues, nimbleFunctions, possibly others
     }
+    updatedSetupOutputNames <<- c(origSetupOutputNamesToKeep, declaredSetupOutputNames) |> unique()
+
     # newSetupOutputNames will have been populated during keyword processing.
-    outputNames <- c(outputNames, newSetupOutputNames)
+    newSetupOutputNamesToProcess <- setdiff(newSetupOutputNames, newSetupOutputNamesInOrig)
+    updatedNewSetupOutputNames <<- newSetupOutputNamesToProcess
+    outputNames <- c(outputNames, newSetupOutputNamesToProcess)
   }
   doSetupTypeInference_processNF(setupSymTab, outputNames, add = TRUE) # add info about each setupOutput to symTab
 
@@ -638,7 +665,7 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
       isArg = FALSE
     )) # previously used a className, but may not be needed
   }
-  if(is.list(first_inst) && 
+  if(is.list(first_inst) &&
      length(first_inst) > 0 &&
       inherits(first_inst[[1]], "varRangeClass")) {
         return(symbolVarRangeList$new(name = name))
@@ -755,6 +782,19 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
   #     return(symbolString(name = name, type = "character", nDim = nDim, size = size))
   #   }
   # }
+  if(nCompiler:::isNC(first_inst)) {
+    if(is.null(attr(first_inst, "NCgenerator")))
+      stop("nClass objects created in setup code or by partial evaluation (keyword processing) must have an 'NCgenerator' attribute set.")
+    NCgen <- attr(first_inst, "NCgenerator")
+    if(!nCompiler:::isNCgenerator(NCgen))
+      NCgen <- eval(NCgen, envir = instances_to_use[[1]])
+    if(!nCompiler:::isNCgenerator(NCgen))
+      stop("nClass objects created in setup code or by partial evaluation (keyword processing) must have an 'NCgenerator' attribute set to an nClass generator object or code that evaluates to one.")
+    return(nCompiler:::symbolNC$new(name = name,
+        type = nCompiler:::NCinternals(NCgen)$cpp_classname,
+        isArg = FALSE,
+        NCgenerator = NCgen))
+  }
   if (is.numeric(instances_to_use[[1]][[name]]) | is.logical(instances_to_use[[1]][[name]])) {
     if (firstOnly) {
       type <- storage.mode(instances_to_use[[1]][[name]])
