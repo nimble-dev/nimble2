@@ -232,7 +232,7 @@ values_keywordInfo <- keywordInfoClass(
     )
     if (!useAccessorVectorByIndex) {
       newRunCode <- substitute(
-        MCN$getValues(),
+        getOrSetValues_(MCN),  # at the time of this writing, nCompiler's custom opDef support won't handle what we'd need for MCN$getOrSetValues().
         list(MCN = as.name(multiCopierNames[1]))
       )
     } else {

@@ -35,24 +35,26 @@ For more information, see \code{?nimbleFunction} and the NIMBLE \href{https://r-
 }
 \examples{
 nfGen1 <- nimbleFunction(
-    setup = function(A) {
+  setup = function(A) {
     B <- matrix(rnorm(4), nrow = 2)
     setupOutputs(B) ## preserves B even though it is not used in run-code
-   },
-   run = function() {
-      print('This is A', A, '\n')
-})
+  },
+  run = function() {
+    print("This is A", A, "\n")
+  }
+)
 
 nfGen2 <- nimbleFunction(
   setup = function() {
     nf1 <- nfGen1(1000)
   },
   run = function() {
-      print('accessing A:', nfVar(nf1, 'A'))
-      nfVar(nf1, 'B')[2,2] <<- -1000
-      print('accessing B:', nfVar(nf1, 'B'))
-   })
-       
+    print("accessing A:", nfVar(nf1, "A"))
+    nfVar(nf1, "B")[2, 2] <<- -1000
+    print("accessing B:", nfVar(nf1, "B"))
+  }
+)
+
 nf2 <- nfGen2()
 nf2$run()
 }

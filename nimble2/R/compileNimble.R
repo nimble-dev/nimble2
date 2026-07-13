@@ -10,7 +10,7 @@ make_model_calls_methods <- function(code, symTab, auxEnv, info) {
   )
   new_code <- substitute(
     MODEL$METHOD(INSTRLISTNAME),
-    list(MODEL = as.name(code$args[[1]]$name), 
+    list(MODEL = as.name(code$args[[1]]$name),
          METHOD = as.name(method),
          INSTRLISTNAME = as.name(code$args[[2]]$name))
   )
@@ -20,17 +20,35 @@ make_model_calls_methods <- function(code, symTab, auxEnv, info) {
   NULL
 }
 
-values_LAT <- function(code, symTab, auxEnv, info) {
-  # convert values(model, nodes) to model$values(nodes)
-  browser()
-  new_code <- substitute(
-    `method->(COPIERS, "copyIntoVector")`,
-    list(COPIERS = as.name(code$args[[1]]$name))
-  )
+getOrSetValues_LAT_impl <- function(code, symTab, auxEnv, info) {
+  # convert getOrSetValues_(multiCopier) to multiCopier$getValues() or another invocation for setting
+  # arguably it would be a cleaner use of compilation steps to only set
+  # type here and then choose method code in the cpp output step.
+  copiersName <- as.name(code$args[[1]]$name)
+  if(isTRUE(auxEnv$onLHS)) {
+    new_code <- substitute(
+      `.method`(`->member`(COPIERS, "flatViewGroup"), "setValues_" ),
+      list(COPIERS = copiersName)
+    )
+  } else {
+    new_code <- substitute(
+      M(COPIERS, "getValues"),
+      list(M = as.name("->method"),
+           COPIERS = copiersName)
+    )
+  }
   new_expr <- nCompiler::nParse(new_code)
   nCompiler:::replaceArgInCaller(code, new_expr)
   nCompiler:::compile_normalizeCalls(new_expr, symTab, auxEnv)
+  new_expr$type <- nCompiler:::type2symbol("numericVector")
   NULL
+}
+
+getOrSetValues_LAT <- function(code, symTab, auxEnv, info) {
+  # The current function is baked into the follow list.
+  # For debugging, we then call an implementation function that can be
+  # dynamically worked on.
+  nimble2:::getOrSetValues_LAT_impl(code, symTab, auxEnv, info)
 }
 
 nimble_nCompiler_opDefs <- list(
@@ -50,8 +68,8 @@ nimble_nCompiler_opDefs <- list(
   model_calculateDiff = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_simulate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getLogProb = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
-  values = list(matchDef = function(model, nodes) {}, 
-    labelAbstractTypes = list(handler = "values_LAT"))
+  getOrSetValues_ = list(matchDef = function(multiCopier) {},
+    labelAbstractTypes = list(handler = getOrSetValues_LAT))
 )
 
 proxyNimbleProjectClass <- R6::R6Class(
