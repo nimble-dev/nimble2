@@ -12,18 +12,18 @@ keywordInfoClass <- setRefClass("keywordInfoClass",
 )
 
 # setupCodeTemplate system:
-# This provides a system in keyword replacement to insert new setup code and 
+# This provides a system in keyword replacement to insert new setup code and
 # new init code into a nimbleFunction class, which will become an nClass.
 #
-# For example, mymodel$calculate(mynodes) may be transformed into 
+# For example, mymodel$calculate(mynodes) may be transformed into
 # mymodel$calculate(mynodes_instr) where the names (mymodel, mynodes)
-# must be used in a substitute step into a template, and the names 
+# must be used in a substitute step into a template, and the names
 # constructed may be long based on argument code, and the in this case
 # a line of new setup code would create mynodes_instr.
-# 
-# In nimble, there only the new setup code, not new init code. And any 
-# setup code would involve creating a new setup output. So the primary setup 
-# output also served as a unique key to determine if the same setup code need 
+#
+# In nimble, there only the new setup code, not new init code. And any
+# setup code would involve creating a new setup output. So the primary setup
+# output also served as a unique key to determine if the same setup code need
 # had already been created based on a previous line of source code.
 #
 # Now there are two new needs:
@@ -38,7 +38,7 @@ keywordInfoClass <- setRefClass("keywordInfoClass",
 # reference classes, with fields that held functions (unique to each one), but that meant
 # they could not access other functions because only actual methods are given that scoping.
 # R6 classes would make this a little easier but still fussy in that assigning a new function
-# as a member field would require manually setting that functions environment for it to 
+# as a member field would require manually setting that functions environment for it to
 # find other functions. So instead of these powerful class tools, we use simple environments,
 # which are sufficient and easier in this case.
 #
@@ -47,7 +47,7 @@ keywordInfoClass <- setRefClass("keywordInfoClass",
 #.  or name of first field returned from makeFields, or an error if both are empty.
 # - makeSetupNames(argList, ...): make names for new setup outputs. Defaults to character(0)
 #.  (One of makeID or makeSetupNames must be provided.)
-# - makeFields(argList, ...): make named list of new fields for an nClass. These will be 
+# - makeFields(argList, ...): make named list of new fields for an nClass. These will be
 #.  fields needed in new init code. Defaults to list()
 # - makeSetupCodeSubList(newSetupNames, argList, ...): make a named list of substitutions for the setup code template. Defaults to list()
 # - setupCodeTemplate: a code object for substitution from makeSetupCodeSubList. Not used if NULL.
@@ -66,7 +66,7 @@ setupCodeTemplate <- function(...) {
         stop("setupCodeTemplate must have at least one of makeID, makeSetupNames, or the names from makeFields be non-empty.")
       ans[1]
     }
-  if(is.null(args$makeFields)) 
+  if(is.null(args$makeFields))
     args$makeFields <- \(argList, ...) list()
   if(is.null(args$makeSetupCodeSubList))
     args$makeSetupCodeSubList <- \(newSetupNames, argList, ...) list()
@@ -439,7 +439,7 @@ calculate_keywordInfo <- keywordInfoClass(
       nodeFunVec_ArgList$sortUnique <- FALSE
     }
 
-    if (!withDerivsOutputOnly) { 
+    if (!withDerivsOutputOnly) {
       ## This is main case (regular mode), including without derivs at all
       #  and with buildDerivs but not nimDerivs(model$calculate...)
       nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
@@ -481,8 +481,8 @@ calculateDiff_keywordInfo <- keywordInfoClass(
       return(code)
     }
     errorContext <- deparse(code)
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$nodes, 
-                              includeData = TRUE, sortUnique = TRUE, 
+    nodeFunVec_ArgList <- list(model = code$model, nodes = code$nodes,
+                              includeData = TRUE, sortUnique = TRUE,
                               errorContext = errorContext)
     # This goes with nodeFxnVector above: deprecate and error-trap
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
@@ -541,7 +541,7 @@ simulate_keywordInfo <- keywordInfoClass(
     errorContext <- deparse(code)
 
     nodeFunVec_ArgList <- list(model = code$model, nodes = code$nodes,
-                              includeData = code$includeData, sortUnique = TRUE, 
+                              includeData = code$includeData, sortUnique = TRUE,
                               errorContext = errorContext)
 
     # This goes with nodeFxnVector above: deprecate and error-trap
@@ -597,7 +597,7 @@ getLogProb_keywordInfo <- keywordInfoClass(
       return(code)
     }
     errorContext <- deparse(code)
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$nodes, 
+    nodeFunVec_ArgList <- list(model = code$model, nodes = code$nodes,
                               includeData = TRUE, sortUnique = TRUE,
                               errorContext = errorContext)
     # This goes with nodeFxnVector above: deprecate and error-trap
@@ -781,6 +781,7 @@ doubleBracket_keywordInfo <- keywordInfoClass(
     possibleObjects <- c("symbolModel", "symbolNimPtrList", "symbolNimbleFunctionList", "symbolNimbleList")
     class <- symTypeFromSymTab(code[[2]], nfProc$setupSymTab, options = possibleObjects)
     if (is.null(class)) { ## assume that an element of a run-time provided nimbleList is being accessed
+      message("Keyword processor for [[ hasn't handled this case (class is null)")
       nl_charName <- as.character(callerCode)
       nl_fieldName <- as.character(code[[3]])
       newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = as.name(nl_charName), VARNAME = nl_fieldName))
@@ -790,6 +791,7 @@ doubleBracket_keywordInfo <- keywordInfoClass(
       return(code)
     }
     if (class == "symbolNimbleList") {
+      message("Keyword processor for [[ hasn't handled this case (class is symbolNimbleList)")
       # 	Code is of the form
       #  myNimbleList[['myVar']]
       nl_charName <- as.character(callerCode)
@@ -812,7 +814,7 @@ doubleBracket_keywordInfo <- keywordInfoClass(
             call. = FALSE
           )
         }
-        varAndIndices <- nimbleInternalFunctions$getVarAndIndices(nodeArg)
+        varAndIndices <- getVarAndIndices(nodeArg)
 
         allNDims <- lapply(nfProc$instances, function(x) {
           model <- eval(singleAccess_ArgList$model,
@@ -867,15 +869,17 @@ doubleBracket_keywordInfo <- keywordInfoClass(
         nDim <- allNDims[[1]]
         useMap <- nDim > 0
       }
+      browser()
       if (useMap) {
         accessName <- map_SetupTemplate$makeName(singleAccess_ArgList)
         addNecessarySetupCode(accessName, singleAccess_ArgList, map_SetupTemplate, nfProc)
         ans <- makeMapAccessExpr(accessName, as.name(accessName), nDim)
       } else {
-        accessName <- singleModelIndexAccess_SetupTemplate$makeName(singleAccess_ArgList)
-        addNecessarySetupCode(accessName, singleAccess_ArgList, singleModelIndexAccess_SetupTemplate, nfProc)
+        accessName <- singleModelIndexAccess_SetupTemplate$makeSetupNames(singleAccess_ArgList)[1]
+        addNecessarySetupAndInitCode( singleModelIndexAccess_SetupTemplate, singleAccess_ArgList, nfProc)
         # ans <- substitute(ACCESSNAME[MFLATINDEX], list(ACCESSNAME = as.name(accessName), MFLATINDEX = as.name(paste0(accessName, '_flatIndex'))))
-        ans <- makeSingleIndexAccessExpr(accessName, as.name(accessName))
+        ans <- substitute(ACCESSNAME[0], list(ACCESSNAME = as.name(accessName)))
+        #ans <- makeSingleIndexAccessExpr(accessName, as.name(accessName))
       }
       return(ans)
     }
@@ -1567,10 +1571,10 @@ processKeywords_recurse <- function(code, nfProc = NULL, RCfunProc) {
 modelMultiCopier_setupCodeTemplate <- setupCodeTemplate(
   # Note to programmer: required fields of argList are model, nodes and logProb
   makeSetupNames = function(argList, ...) {
-    c(Rname2CppName(paste(deparse(argList$model), 
-        deparse(argList$nodes), 
-        "multCopy_logProb", 
-        deparse(argList$logProb), 
+    c(Rname2CppName(paste(deparse(argList$model),
+        deparse(argList$nodes),
+        "multCopy_logProb",
+        deparse(argList$logProb),
         "LPO", deparse(argList$logProbOnly), sep = "_")),
       as.character(argList$model)
       )
@@ -1585,11 +1589,11 @@ modelMultiCopier_setupCodeTemplate <- setupCodeTemplate(
     )
   },
   # makeFields = function(argList, ...) {
-  #   fieldName <- Rname2CppName(paste(deparse(argList$model), 
-  #     deparse(argList$nodes), 
-  #     "access_logProb", 
-  #     deparse(argList$logProb), 
-  #     "LPO", 
+  #   fieldName <- Rname2CppName(paste(deparse(argList$model),
+  #     deparse(argList$nodes),
+  #     "access_logProb",
+  #     deparse(argList$logProb),
+  #     "LPO",
   #     deparse(argList$logProbOnly),
   #     "nCobj", sep = "_"))
   #   list("nimbleModel:::multiCopier_nClass()") |> setNames(fieldName)
@@ -1888,6 +1892,44 @@ singleVarAccess_SetupTemplate <- setupCodeTemplate(
   }
 )
 
+singleModelIndexAccess_SetupTemplate <- setupCodeTemplate(
+  makeSetupNames = function(argList, ...) {
+    baseName <- Rname2CppName(deparse(argList$code))
+    varName <- paste0(baseName, "_varName")
+    indsName <- paste0(baseName, "_inds")
+  },
+  setupCodeTemplate = quote({
+    VARANDINDICES <- getVarAndIndices(NODEVARNAME)
+    VARNAME <- as.character(VARANDINDICES$varName)
+    INDSNAME <- as.integer(VARANDINDICES$indices)
+  }),
+  makeSetupCodeSubList = function(setupNames, argList, ...) {
+    list(
+      VARANDINDICES = as.name(paste0(setupNames[1], "_varAndIndices")),
+      VARNAME = as.name(paste0(setupNames[1], "_varName")),
+      INDSNAME = as.name(paste0(setupNames[1], "_inds")),
+      NODEVARNAME = argList$nodeExpr
+    )
+  },
+   makeFields = function(argList, ...) {
+     baseName <- Rname2CppName(deparse(argList$code))
+     scalar_node_ptr_name <- paste0(baseName, "_nodePtr")
+     inds_name <- paste0(baseName, "_inds")
+     list("nCpp('double*')", "integerVector") |> setNames(c(scalar_node_ptr_name, inds_name))
+   },
+   initCodeTemplate = quote({
+     SCALAR_NODE_PTR = make_scalarNodePtr(MODEL, NODEVARNAME, INDS)
+   }),
+   makeInitCodeSubList = function(fields, setupNames, argList, ...) {
+     list(
+       SCALAR_NODE_PTR = as.name(names(fields)[1]),
+       MODEL = argList$model,
+       NODEVARNAME = argList$nodeExpr,
+       INDS = as.name(names(fields)[2])
+     )
+   }
+)
+
 # singleModelIndexAccess_SetupTemplate <- setupCodeTemplateClass(
 #   # Note to progammer: required fields of argList are code, varAndIndices, node (character) and model(expression)
 #   makeOtherNames = function(name, argList) {
@@ -2002,7 +2044,7 @@ addNecessarySetupAndInitCode <- function(
   template, argList,
   nfProc, allowToCpp = TRUE
 ) {
-  if (is.null(nfProc)) 
+  if (is.null(nfProc))
     stop("Trying to add setup code for a nimbleFunction with no setup code.")
   if (!isKeywordCaseHandled(template, argList, nfProc)) {
     uniqueID <- template$makeID(argList)
@@ -2010,8 +2052,8 @@ addNecessarySetupAndInitCode <- function(
     nfProc$newSetupOutputNames <- c(newSetupNames, nfProc$newSetupOutputNames)
     if(!is.null(template$setupCodeTemplate)) {
       subList <- template$makeSetupCodeSubList(newSetupNames, argList)
-      nfProc$newSetupCode[[uniqueID]] <- 
-        eval(substitute(substitute(TEMPLATE, subList), 
+      nfProc$newSetupCode[[uniqueID]] <-
+        eval(substitute(substitute(TEMPLATE, subList),
             list(TEMPLATE = template$setupCodeTemplate)))
       # allowToCpp feature may become unnecessary.
       if(!allowToCpp)
@@ -2022,7 +2064,7 @@ addNecessarySetupAndInitCode <- function(
     nfProc$newFields <- c(newFields, nfProc$newFields)
     if (!is.null(template$initCodeTemplate)) {
       subList <- template$makeInitCodeSubList(newFields, newSetupNames, argList)
-        nfProc$newInitCode[[uniqueID]] <- 
+        nfProc$newInitCode[[uniqueID]] <-
           eval(substitute(substitute(TEMPLATE, subList),
                 list(TEMPLATE = template$initCodeTemplate)))
     }
@@ -2115,37 +2157,6 @@ matchAndFill.call <- function(def, call) {
   }
 
   return(newCall)
-}
-
-
-determineNdimsFromNfproc <- function(modelExpr, varOrNodeExpr, nfProc) {
-  allNDims <- lapply(nfProc$instances, function(x) {
-    model <- eval(modelExpr, envir = x)
-    if (length(varOrNodeExpr) > 1) {
-      stop("One must request a node from a model using syntax like `model[[node]]` and not syntax such as `model[[nodes[i]]]`. For the latter case use `values()` instead.")
-    }
-    if (!exists(as.character(varOrNodeExpr), x, inherits = FALSE)) {
-      stop(paste0("Problem accessing node or variable ", deparse(varOrNodeExpr), "."), call. = FALSE)
-    }
-    lab <- eval(varOrNodeExpr, envir = x)
-    if (length(lab) != 1) {
-      stop(
-        paste0(
-          "Length of ",
-          deparse(varOrNodeExpr),
-          " requested from ",
-          deparse(modelExpr),
-          " using '[[' is ",
-          length(lab),
-          ". It must be 1."
-        ),
-        call. = FALSE
-      )
-    }
-    varAndIndices <- nimbleInternalFunctions$getVarAndIndices(lab)
-    determineNdimFromOneCase(model, varAndIndices)
-  })
-  return(allNDims)
 }
 
 ## from a$b(), goal is to get symbolObject for a
@@ -2344,21 +2355,6 @@ makeMapAccessExpr <- function(newName, newNameExpr, nDim) { ## newNameExpr not u
   )
   ans
 }
-
-determineNdimFromOneCase <- function(model, varAndIndices) {
-  varInfo <- try(model$getVarInfo(as.character(varAndIndices$varName)))
-  if (inherits(varInfo, "try-error")) stop(paste0("In determineNdimFromOneCase: error in extracting varInfo for ", varAndIndices$varName), call. = FALSE)
-  varNdim <- varInfo$nDim
-  if (length(varAndIndices$indices) == 0) {
-    return(varNdim)
-  }
-  if (length(varAndIndices$indices) != varNdim) {
-    stop(paste0("Error, wrong number of dimensions in a node label for ", varAndIndices$varName, ".  Expected ", varNdim, " indices but got ", length(varAndIndices$indices), "."))
-  }
-  dropNdim <- sum(unlist(lapply(varAndIndices$indices, is.numeric)))
-  return(varNdim - dropNdim)
-}
-
 
 ## steps here are similar to makeMapExprFromBrackets, but that uses exprClasses
 

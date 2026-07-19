@@ -243,11 +243,13 @@ nimOptimMethod(
     # includeUnneededLatents = FALSE,
     # useADdmnorm = TRUE,
     # checkModelBasics = TRUE
-    end_entry_to_avoid_comma_errors = NULL
+    end_entry_to_avoid_comma_errors = NULL,
+    #
+    # new to nimble2
+    deduceTypeFromFirstInstanceOnly = FALSE
   )
 )
 
-# sets a single option
 setNimbleOption <- function(name, value) {
   assign(name, value, envir = .nimbleOptions)
   invisible(value)

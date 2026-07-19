@@ -503,7 +503,8 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
   }
 })
 
-nfProcessing$methods(doSetupTypeInference_processNF = function(symTab, setupOutputNames, add = FALSE, firstOnly = FALSE) {
+nfProcessing$methods(doSetupTypeInference_processNF = function(symTab,
+      setupOutputNames, add = FALSE, firstOnly = isTRUE(getNimbleOption("deduceTypeFromFirstInstanceOnly"))) {
   if (length(instances) == 0) {
     warning("Can not infer setup output types with no instances.")
     return(invisible(NULL))
@@ -750,38 +751,38 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
   # if (inherits(instances[[1]][[name]], "getBound_info")) {
   #   return(symbolGetBoundInfo(name = name, boundInfo = instances[[1]][[name]]))
   # }
-  # if (is.character(instances[[1]][[name]])) {
-  #   if (firstOnly) {
-  #     nDim <- if (is.null(dim(instances[[1]][[name]]))) 1L else length(dim(instances[[1]][[name]]))
-  #     if (nDim > 1) {
-  #       warning("character object with nDim > 1 being handled as a vector")
-  #       nDim <- 1
-  #     }
-  #     size <- if (length(instances[[1]][[name]]) == 1) 1L else as.numeric(NA)
-  #     if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) {
-  #       if (nDim == 1 & identical(as.integer(size), 1L)) nDim <- 0
-  #     }
-  #     return(symbolString(name = name, type = "character", nDim = nDim, size = size))
-  #   } else {
-  #     instanceObjs <- lapply(instances, `[[`, name)
-  #     types <- unlist(lapply(instanceObjs, storage.mode))
-  #     if (!all(types == "character")) stop(paste("Inconsistent types for setup variable", name))
-  #     dims <- lapply(instanceObjs, dim)
-  #     dimsNULL <- unlist(lapply(dims, is.null))
-  #     if (any(dimsNULL)) { ## dimsNULL TRUE means it is a vector
-  #       if (!all(dimsNULL)) {
-  #         warning(paste0("Dimensions do no all match for ", name, "but they will be treated as all vectors anyway."))
-  #       }
-  #     }
-  #     nDim <- 1
-  #     lengths <- unlist(lapply(instanceObjs, length))
-  #     size <- if (!all(lengths == 1)) as.numeric(NA) else 1L
-  #     if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) {
-  #       if (nDim == 1 & identical(as.integer(size), 1L)) nDim <- 0
-  #     }
-  #     return(symbolString(name = name, type = "character", nDim = nDim, size = size))
-  #   }
-  # }
+  if (is.character(first_inst)) {
+    if (firstOnly) {
+      nDim <- if (is.null(dim(first_inst))) 1L else length(dim(first_inst[[name]]))
+      if (nDim > 1) {
+        warning("character object with nDim > 1 being handled as a vector")
+        nDim <- 1
+      }
+      size <- if (length(first_inst) == 1) 1L else as.numeric(NA)
+      if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) {
+        if (nDim == 1 & identical(as.integer(size), 1L)) nDim <- 0
+      }
+      return(nCompiler:::symbolBasicString$new(name = name, nDim = nDim))
+    } else {
+      instanceObjs <- lapply(instances_to_use, `[[`, name)
+      types <- unlist(lapply(instanceObjs, storage.mode))
+      if (!all(types == "character")) stop(paste("Inconsistent types for setup variable", name))
+      dims <- lapply(instanceObjs, dim)
+      dimsNULL <- unlist(lapply(dims, is.null))
+      if (any(dimsNULL)) { ## dimsNULL TRUE means it is a vector
+        if (!all(dimsNULL)) {
+          warning(paste0("Dimensions do no all match for ", name, "but they will be treated as all vectors anyway."))
+        }
+      }
+      nDim <- 1
+      lengths <- unlist(lapply(instanceObjs, length))
+      size <- if (!all(lengths == 1)) as.numeric(NA) else 1L
+      if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) {
+        if (nDim == 1 & identical(as.integer(size), 1L)) nDim <- 0
+      }
+      return(nCompiler:::symbolBasicString$new(name = name, nDim = nDim))
+    }
+  }
   if(nCompiler:::isNC(first_inst)) {
     if(is.null(attr(first_inst, "NCgenerator")))
       stop("nClass objects created in setup code or by partial evaluation (keyword processing) must have an 'NCgenerator' attribute set.")
@@ -795,40 +796,54 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
         isArg = FALSE,
         NCgenerator = NCgen))
   }
-  if (is.numeric(instances_to_use[[1]][[name]]) | is.logical(instances_to_use[[1]][[name]])) {
+  if (is.numeric(first_inst) || is.logical(first_inst)) {
     if (firstOnly) {
-      type <- storage.mode(instances_to_use[[1]][[name]])
-      nDim <- if (is.null(dim(instances_to_use[[1]][[name]]))) 1L else length(dim(instances_to_use[[1]][[name]]))
-      size <- if (length(instances_to_use[[1]][[name]]) == 1) rep(1L, nDim) else rep(as.numeric(NA), nDim)
+      type <- storage.mode(first_inst)
+      nDim <- if (is.null(dim(first_inst))) 1L else length(dim(first_inst))
+      size <- if (length(first_inst) == 1) rep(1L, nDim) else rep(as.numeric(NA), nDim)
+      declared_type <- attr(first_inst, "nimble_type")
       if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) {
         if (nDim == 1 & identical(as.integer(size), 1L)) nDim <- 0
+      }
+      if(!is.null(declared_type)) {
+        type <- declared_type$type %||% type
+        nDim <- declared_type$nDim %||% nDim
+       # size <- declared_type$size %||% size
       }
       return(nCompiler:::symbolBasic$new(name = name, type = type, nDim = nDim, size = size))
     } else {
       instanceObjs <- lapply(instances_to_use, `[[`, name)
       types <- unlist(lapply(instanceObjs, storage.mode))
-      dims <- lapply(instanceObjs, dim)
-      dimsNULL <- unlist(lapply(dims, is.null))
-      if (any(dimsNULL)) { ## dimsNULL TRUE means it is a vector
-        if (!all(dimsNULL)) {
-          warning(paste0("Problem, dimensions do no all match for ", name))
-          return(NA)
-        }
-        nDim <- 1
-        lengths <- unlist(lapply(instanceObjs, length))
-        size <- if (!all(lengths == 1)) as.numeric(NA) else 1L
-        if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) {
-          if (nDim == 1 & identical(as.integer(size), 1L)) nDim <- 0
-        }
+      dims <- lapply(instanceObjs, \(x) if (is.null(dim(x))) length(x) else dim(x)) |> unlist()
+#      dimsNULL <- unlist(lapply(dims, is.null))
+      declared_types <- lapply(instanceObjs, function(x) attr(x, "nimble_type"))
+      bool_declared_types <- unlist(lapply(declared_types, function(x) !is.null(x)))
+      if (any(bool_declared_types)) {
+        use_declaredTypes <- TRUE
+        declared_typeList <- lapply(declared_types, function(x) x$type)
+        declared_nDimList <- lapply(declared_types, function(x) x$nDim)
+       # declared_sizeList <- lapply(declared_types, function(x) x$size)
       } else {
-        ## no dims are null, so everything is matrix or array
-        dimsLengths <- unlist(lapply(dims, length))
-        if (length(unique(dimsLengths)) > 1) {
-          warning(paste0("Problem, dimensions do no all match for ", name))
-          return(NA)
-        }
-        nDim <- dimsLengths[[1]]
-        size <- rep(as.numeric(NA), nDim)
+        use_declaredTypes <- FALSE
+      }
+
+      default_singleton_nDim <- if(getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) 0 else 1
+      nDims <- lapply(dims, function(x) if (length(x) == 1 && x[1] == 1) default_singleton_nDim else length(x))
+      if(use_declaredTypes) {
+        bool_declared_nDimList <- lapply(declared_nDimList, \(x) !is.null(x)) |> unlist()
+        nDims[bool_declared_nDimList] <- declared_nDimList[bool_declared_nDimList]
+      }
+      if(length(unique(nDims)) > 1) {
+        warning(paste0("Problem, dimensions do no all match for ", name))
+        return(NA)
+      }
+      nDim <- nDims[[1]]
+      size <- rep(as.numeric(NA), nDim) # not really used in nimble2 and may be removed
+      if(nDim == 0) size <- 1L
+
+      if(use_declaredTypes) {
+        bool_declared_typeList <- lapply(declared_typeList, \(x) !is.null(x)) |> unlist()
+        types[bool_declared_typeList] <- declared_typeList[bool_declared_typeList]
       }
 
       if (any(types == "double")) {
