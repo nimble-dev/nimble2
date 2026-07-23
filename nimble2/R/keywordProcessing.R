@@ -81,40 +81,6 @@ setupCodeTemplate <- function(...) {
   return(env)
 }
 
-# R6::R6Class(
-#   classname = "setupCodeTemplateClass",
-#   public = list()
-#   fields = list(
-#     makeName = "ANY",
-#     codeTemplate = "ANY",
-#     makeCodeSubList = "ANY",
-#     makeOtherNames = "ANY",
-#     #
-#     makeFieldName = "ANY",
-#     ctorCodeTemplate = "ANY",
-#     makeCtorCodeSubList = "ANY",
-#     makeOtherFieldNames = "ANY",
-#     makeFieldTypes = "ANY"
-#   ),
-#   methods = list(
-#     initialize = function(...) {
-#       makeName <<- \(...) NULL    # at least one of these must be replaced in a derived class
-#       makeFieldName <<- \(...) NULL
-#       makeOtherNames <<- function(name, argList) {
-#         return(character(0))
-#       }
-#       makeOtherFieldNames <<- function(name, argList) {
-#         return(character(0))
-#       }
-#       callSuper(...)
-#     },
-#     makeName_ = function(...) {
-#       .self$makeName(...)
-#     }
-#   )
-# )
-
-
 ### KEYWORD INFO OBJECTS
 
 d_gamma_keywordInfo <- keywordInfoClass(
@@ -181,7 +147,6 @@ besselK_keywordInfo <- keywordInfoClass(
   }
 )
 
-
 nimSeq_keywordInfo <- keywordInfoClass(
   keyword = "nimSeq",
   processor = function(code, nfProc, RCfunProc) {
@@ -200,7 +165,6 @@ nimSeq_keywordInfo <- keywordInfoClass(
     return(newRunCode)
   }
 )
-
 
 values_keywordInfo <- keywordInfoClass(
   keyword = "values",
@@ -772,7 +736,6 @@ nimCopy_keywordInfo <- keywordInfoClass(
   }
 )
 
-
 doubleBracket_keywordInfo <- keywordInfoClass(
   keyword = "[[",
   processor = function(code, nfProc, RCfunProc) {
@@ -803,13 +766,15 @@ doubleBracket_keywordInfo <- keywordInfoClass(
       singleAccess_ArgList <- list(code = code, model = code[[2]], nodeExpr = code[[3]])
       nodeArg <- code[[3]]
       if (is.character(nodeArg)) {
-        if (length(nodeArg) > 1) {
+        singleAccess_ArgList$nodeIsLiteral <- TRUE
+        # nodeArg is hard-coded, not a variable.
+        if (length(nodeArg) != 1) {
           stop(
             paste0(
               "Problem in ",
               deparse(code), ". ",
-              deparse(code[[3]]),
-              " is too long.  It can only have one element."
+              deparse(nodeArg),
+              " must have exactly one element."
             ),
             call. = FALSE
           )
@@ -820,23 +785,14 @@ doubleBracket_keywordInfo <- keywordInfoClass(
           model <- eval(singleAccess_ArgList$model,
             envir = x
           )
-          if (length(nodeArg) != 1) {
-            stop(
-              paste0(
-                "Length of ",
-                nodeArg,
-                " requested from ",
-                deparse(singleAccess_ArgList$model),
-                " using '[[' is ",
-                length(nodeArg),
-                ". It must be 1."
-              ),
-              call. = FALSE
-            )
-          }
           determineNdimFromOneCase(model, varAndIndices)
         })
 
+        # In the future, with nCompiler under the hood,
+        # we have the potential to generalize this,
+        # but we may need to do so by adding an argument
+        # for explicitly declaration since it is not clear
+        # what to choose if they are not all the same.
         if (length(unique(allNDims)) > 1) {
           stop(
             paste0(
@@ -853,11 +809,17 @@ doubleBracket_keywordInfo <- keywordInfoClass(
         ## ## If input is of the form model[['a']]
         ## ## and a is non-scalar,
         ## ## we treat it like model$a, which handles either
-        if (useMap & length(varAndIndices$indices) == 0) {
-          return(
-            keywordList[["$"]]$processor(code, nfProc, RCfunProc)
-          )
-        }
+        ## In nimble we could do this.
+        ## In nimble2 we access models via base class,
+        ## so we don't rely on direct access to named variables.
+        ## and instead we go through the regular machinery
+        ## with an adapation for a literal node arg
+        # if (useMap & length(varAndIndices$indices) == 0) {
+        #   return(
+        #     keywordList[["$"]]$processor(code, nfProc, RCfunProc)
+        #   )
+        # }
+
         ## ## Following line adds up 0 for each scalar index
         ## ## and 1 for each non-scalar index to determine if the
         ## ## accessed node is scalar
@@ -865,14 +827,18 @@ doubleBracket_keywordInfo <- keywordInfoClass(
         ## useMap <- nDim > 0
       } else {
         allNDims <- determineNdimsFromNfproc(singleAccess_ArgList$model, nodeArg, nfProc)
-        if (length(unique(allNDims)) > 1) stop(paste0("Error for ", deparse(code), ". Inconsistent numbers of dimensions for different instances."), call. = FALSE)
+        if (length(unique(allNDims)) > 1) 
+          stop(paste0("Error for ", deparse(code), 
+              ". Inconsistent numbers of dimensions for different instances."),
+               call. = FALSE)
         nDim <- allNDims[[1]]
         useMap <- nDim > 0
       }
       if (useMap) {
-        accessName <- map_SetupTemplate$makeName(singleAccess_ArgList)
-        addNecessarySetupCode(accessName, singleAccess_ArgList, map_SetupTemplate, nfProc)
-        ans <- makeMapAccessExpr(accessName, as.name(accessName), nDim)
+        singleAccess_ArgList$nDim <- nDim
+        fields <- map_SetupTemplate$makeFields(singleAccess_ArgList)
+        addNecessarySetupAndInitCode(map_SetupTemplate, singleAccess_ArgList, nfProc)
+        ans <- as.name(names(fields)[1])
       } else {
         newFields <- singleModelIndexAccess_SetupTemplate$makeFields(singleAccess_ArgList)
         accessName <- names(newFields)[1]
@@ -1913,7 +1879,7 @@ singleModelIndexAccess_SetupTemplate <- nimble2:::setupCodeTemplate(
     list(
       VARANDINDICES = as.name(paste0(baseName, "_varAndIndices")),
       VARNAME = as.name(setupNames[1]),
-      INDSNAME = setupNames[3],
+      INDSNAME = as.name(setupNames[3]),
       NODEVARNAME = argList$nodeExpr
     )
   },
@@ -1934,10 +1900,76 @@ singleModelIndexAccess_SetupTemplate <- nimble2:::setupCodeTemplate(
     NODEVARNAME = setupNames[1]
     INDS = setupNames[3]
     code <- paste0(SCALAR_NODE_PTR, 
-      " = make_scalarNodePtr(", MODEL, ", ", 
+      " = make_scalarFieldPtr(", MODEL, ", ", 
       NODEVARNAME, ", ", INDS, ", true)") # true says to substract ones from the R indices.
     list(CODE = code)
    }
+)
+
+map_SetupTemplate <- nimble2:::setupCodeTemplate(
+  # This case handles m[[v]] where v is a variable name.
+  makeID = function(argList, ...) {
+    Rname2CppName(deparse(argList$code))
+  },
+  makeSetupNames = function(argList, ...) {
+    nodeIsLiteral <- isTRUE(argList$nodeIsLiteral)
+    baseName <- makeID(argList, ...)
+    varName <- if(nodeIsLiteral) NULL else paste0(baseName, "_varName")
+    modelName <- deparse(argList$model) # force retaining it since it will only appear in nCpp and so not be found by all.names().
+    indsName <- paste0(baseName, "_inds")
+    c(varName = varName, modelName = modelName, indsName = indsName)
+  },
+  setupCodeTemplate = quote({
+    VARANDINDICES <- nimble2:::getVarAndIndices(NODEVARNAME)
+    VARNAME_EXPR
+    INDSNAME <- VARANDINDICES$indices |> 
+     nimble2:::indicesList2matrix() |> 
+     nimble2:::setNimType(list(nDim = 2, type = "integer"))
+    NULL
+  }),
+  makeSetupCodeSubList = function(setupNames, argList, ...) {
+    nodeIsLiteral <- isTRUE(argList$nodeIsLiteral)
+    baseName <- makeID(argList, ...)
+    subList <- list(
+      VARANDINDICES = as.name(paste0(baseName, "_varAndIndices")),
+      VARNAME_EXPR = NULL,
+      INDSNAME = as.name(setupNames["indsName"]),
+      NODEVARNAME = argList$nodeExpr
+    )
+    browser()
+    if(!nodeIsLiteral) {
+      subList$VARNAME_EXPR <- 
+      substitute(VARNAME <- as.character(VARANDINDICES$varName),
+        c(subList, list(VARNAME = as.name(setupNames["varName"]))))
+    }
+    subList
+  },
+  makeFields = function(argList, ...) {
+    baseName <- makeID(argList, ...)
+    STMname <- paste0(baseName, "_STM")
+    newSym <- nCompiler:::type2symbol(double(nDim = argList$nDim, isBlockRef=TRUE, interface=FALSE))
+    list(newSym) |> setNames(c(STMname))
+  },
+  initCodeTemplate = quote({
+    nCpp(CODE)
+  }),
+  makeInitCodeSubList = function(fields, setupNames, argList, ...) {
+    STM <- names(fields)[1]
+    MODEL <- setupNames["modelName"]
+    # NODEVARNAME <- setupNames["varName"]
+    nodeIsLiteral <- isTRUE(argList$nodeIsLiteral)
+    NODEVARNAME <- if(nodeIsLiteral) 
+      paste0("\"", nimble2:::getVarAndIndices(argList$nodeExpr)$varName, "\"")
+      else setupNames["varName"]
+    INDS = setupNames["indsName"]
+    code <- paste0(
+      "rebind_fieldSTM(", 
+      STM, ", ", 
+      MODEL, ", ", 
+      NODEVARNAME, ", ",
+      INDS, ", true)") # true says to substract ones from the R indices.
+    list(CODE = code)
+  }
 )
 
 # singleModelIndexAccess_SetupTemplate <- setupCodeTemplateClass(

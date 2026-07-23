@@ -14,6 +14,17 @@ getVarAndIndices <- function(code) {
     list(varName = varName, indices = indices)
 }
 
+indicesList2matrix <- function(indices) {
+  extractRow <- function(x) {
+    if(nCompiler:::is.blank(x)) return(c(NA, NA) |> as.integer())
+    if(length(x) == 1) return(c(x, NA) |> as.integer())
+    if(!is.call(x) || x[[1]] != ":") stop("problem with some indices")
+    c(x[[2]], x[[3]]) |> as.integer()
+  }
+  do.call("rbind",
+          lapply(indices, extractRow)) %||%
+  matrix(0L, nrow = 0, ncol = 2) # 0L makes it integer even though empty
+}
 
 determineNdimFromOneCase <- function(model, varAndIndices) {
     #varInfo <- try(model$getVarInfo(as.character(varAndIndices$varName)))
