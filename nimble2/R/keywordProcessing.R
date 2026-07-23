@@ -869,16 +869,16 @@ doubleBracket_keywordInfo <- keywordInfoClass(
         nDim <- allNDims[[1]]
         useMap <- nDim > 0
       }
-      browser()
       if (useMap) {
         accessName <- map_SetupTemplate$makeName(singleAccess_ArgList)
         addNecessarySetupCode(accessName, singleAccess_ArgList, map_SetupTemplate, nfProc)
         ans <- makeMapAccessExpr(accessName, as.name(accessName), nDim)
       } else {
-        accessName <- singleModelIndexAccess_SetupTemplate$makeSetupNames(singleAccess_ArgList)[1]
+        newFields <- singleModelIndexAccess_SetupTemplate$makeFields(singleAccess_ArgList)
+        accessName <- names(newFields)[1]
         addNecessarySetupAndInitCode( singleModelIndexAccess_SetupTemplate, singleAccess_ArgList, nfProc)
         # ans <- substitute(ACCESSNAME[MFLATINDEX], list(ACCESSNAME = as.name(accessName), MFLATINDEX = as.name(paste0(accessName, '_flatIndex'))))
-        ans <- substitute(ACCESSNAME[0], list(ACCESSNAME = as.name(accessName)))
+        ans <- substitute(ACCESSNAME[1], list(ACCESSNAME = as.name(accessName))) # The index will become "1 - 1". 
         #ans <- makeSingleIndexAccessExpr(accessName, as.name(accessName))
       }
       return(ans)
@@ -1892,41 +1892,51 @@ singleVarAccess_SetupTemplate <- setupCodeTemplate(
   }
 )
 
-singleModelIndexAccess_SetupTemplate <- setupCodeTemplate(
+singleModelIndexAccess_SetupTemplate <- nimble2:::setupCodeTemplate(
+  makeID = function(argList, ...) {
+    Rname2CppName(deparse(argList$code))
+  },
   makeSetupNames = function(argList, ...) {
-    baseName <- Rname2CppName(deparse(argList$code))
+    baseName <- makeID(argList, ...)
     varName <- paste0(baseName, "_varName")
+    modelName <- deparse(argList$model) # force retaining it since it will only appear in nCpp and so not be found by all.names().
     indsName <- paste0(baseName, "_inds")
+    c(varName, modelName, indsName)
   },
   setupCodeTemplate = quote({
-    VARANDINDICES <- getVarAndIndices(NODEVARNAME)
+    VARANDINDICES <- nimble2:::getVarAndIndices(NODEVARNAME)
     VARNAME <- as.character(VARANDINDICES$varName)
-    INDSNAME <- as.integer(VARANDINDICES$indices)
+    INDSNAME <- as.integer(VARANDINDICES$indices) |> setNimType(list(nDim = 1, type = "integer"))
   }),
   makeSetupCodeSubList = function(setupNames, argList, ...) {
+    baseName <- makeID(argList, ...)
     list(
-      VARANDINDICES = as.name(paste0(setupNames[1], "_varAndIndices")),
-      VARNAME = as.name(paste0(setupNames[1], "_varName")),
-      INDSNAME = as.name(paste0(setupNames[1], "_inds")),
+      VARANDINDICES = as.name(paste0(baseName, "_varAndIndices")),
+      VARNAME = as.name(setupNames[1]),
+      INDSNAME = setupNames[3],
       NODEVARNAME = argList$nodeExpr
     )
   },
    makeFields = function(argList, ...) {
-     baseName <- Rname2CppName(deparse(argList$code))
+     baseName <- makeID(argList, ...)
      scalar_node_ptr_name <- paste0(baseName, "_nodePtr")
-     inds_name <- paste0(baseName, "_inds")
-     list("nCpp('double*')", "integerVector") |> setNames(c(scalar_node_ptr_name, inds_name))
+#     inds_name <- paste0(baseName, "_inds")
+     newSym <- nimble2:::symbolDptr$new()
+#     list(newSym, "integerVector") |> setNames(c(scalar_node_ptr_name, inds_name))
+     list(newSym) |> setNames(c(scalar_node_ptr_name))
    },
    initCodeTemplate = quote({
-     SCALAR_NODE_PTR = make_scalarNodePtr(MODEL, NODEVARNAME, INDS)
+     nCpp(CODE)
    }),
    makeInitCodeSubList = function(fields, setupNames, argList, ...) {
-     list(
-       SCALAR_NODE_PTR = as.name(names(fields)[1]),
-       MODEL = argList$model,
-       NODEVARNAME = argList$nodeExpr,
-       INDS = as.name(names(fields)[2])
-     )
+    SCALAR_NODE_PTR = names(fields)[1]
+    MODEL = argList$model |> deparse()
+    NODEVARNAME = setupNames[1]
+    INDS = setupNames[3]
+    code <- paste0(SCALAR_NODE_PTR, 
+      " = make_scalarNodePtr(", MODEL, ", ", 
+      NODEVARNAME, ", ", INDS, ", true)") # true says to substract ones from the R indices.
+    list(CODE = code)
    }
 )
 

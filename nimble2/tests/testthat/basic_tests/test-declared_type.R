@@ -10,16 +10,18 @@ nimbleOptions(enableDerivs = FALSE)
 ##   x
 ## }
 
+message("add nimble_type (declared type) tests with multiple instances.")
+
 test_that("attribute nimble_type works", {
   currOpt <- getNimbleOption("deduceTypeFromFirstInstanceOnly")
   on.exit(nimble2:::setNimbleOption("deduceTypeFromFirstInstanceOnly", currOpt))
 
   for(nopt in c(FALSE, TRUE)) {
     nimble2:::setNimbleOption("deduceTypeFromFirstInstanceOnly", nopt)
-    ## STOPPED HERE: THIS IS NOT PROPAGATING.
+
     foo <- nimbleFunction(
       setup = function( ) {
-        xDv_s <- 1:2 |> setNimType(list(nDim = 0)) # set up for an err
+        xDv_s <- 1:2 |> setNimType(list(nDim = 0)) # set up for an err, because a vector was provided so it can't be nDim=0
         setupOutputs(xDv_s)
       },
       run = function() {

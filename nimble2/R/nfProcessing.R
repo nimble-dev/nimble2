@@ -483,6 +483,8 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
     updatedSetupOutputNames <<- c(origSetupOutputNamesToKeep, declaredSetupOutputNames) |> unique()
 
     # newSetupOutputNames will have been populated during keyword processing.
+    # This also provides a way to force retaining a name that would otherwise be discarded,
+    #.  for example if it appears in an nCpp (cppLiteral) call and thus is not picked up by the all.names() above.
     newSetupOutputNamesToProcess <- setdiff(newSetupOutputNames, newSetupOutputNamesInOrig)
     updatedNewSetupOutputNames <<- newSetupOutputNamesToProcess
     outputNames <- c(outputNames, newSetupOutputNamesToProcess)

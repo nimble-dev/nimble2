@@ -72,20 +72,6 @@ nimble_nCompiler_opDefs <- list(
     labelAbstractTypes = list(handler = getOrSetValues_LAT))
 )
 
-proxyNimbleProjectClass <- R6::R6Class(
-  classname = "nimbleProjectClass",
-  public = list(
-    dirName = NULL,
-    name = NULL,
-    initialize = function(name, dirName) {
-      if (!missing(name)) self$name <- name
-      if (!missing(dirName)) self$dirName <- dirName
-    },
-    resetFunctions = function() {},
-    clearCompiled = function() {}
-  )
-)
-
 #' @importFrom nCompiler registerOpDef deregisterOpDef
 #' @export
 compileNimble <- function(..., project, dirName = NULL, projectName = "",

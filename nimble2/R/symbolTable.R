@@ -89,65 +89,67 @@ symbolModel <-
       )
   )
 
-# nimSymbolTable <-
-#   R6::R6Class(
-#     Class = "nimSymbolTable",
-#     public = list(
-#       symbols = NULL,
-#       parentST = NULL,
-#       initialize = function(parentST = NULL) {
-#         symbols <<- list()
-#         parentST <<- parentST
-#       },
-#       addSymbol = function(symbolRCobject, allowReplace = FALSE) {
-#         ##  if(!is(symbolRCobject, 'symbolBase'))   stop('adding non-symbol object to symbolTable')
-#         name <- symbolRCobject$name
-#         if (!allowReplace)
-#           if (name %in% getSymbolNames())
-#             warning(paste0("duplicate symbol name: ", name))
-#         symbols[[name]] <<- symbolRCobject
-#       },
-#       ## remove a symbol RC object from this symbolTable; gives warning if symbol isn't in table
-#       removeSymbol = function(name) {
-#         if (!(name %in% getSymbolNames())) warning(paste0("removing non-existant symbol name: ", name))
-#         symbols[[name]] <<- NULL
-#       },
+Dptr_Bracket_LAT <- function(code, symTab, auxEnv, handlingInfo) {
+  nCompiler:::labelAbstractTypesEnv$recurse_labelAbstractTypes(code, symTab, auxEnv, handlingInfo)
+  code$type <- nCompiler:::type2symbol("numericScalar")
+}
+Dptr_Bracket_EIG <- function(code, symTab, auxEnv, workEnv, handlingInfo) {
+  nCompiler:::eigenizeEnv$eigenCast(code, 2, "integer")
+  isAssign <- isTRUE(handlingInfo$isAssign)
+   # We will revert to `<-`(LHS, RHS)
+    if(isAssign) {
+      caller <- code$caller
+      callerArgID <- code$callerArgID
+      nCompiler:::eigenizeEnv$revert_OpAssign(code, symTab, auxEnv, workEnv, handlingInfo)
+      code <- caller$args[[callerArgID]] # now `<-`(LHS, RHS)
+      code <- code$args[[1]] # LHS, which is the original `[` call
+    }
+  NULL
+}
 
-#       ## symbol accessor functions
-#       getLength = function() {
-#         return(length(symbols))
-#       },
-#       getSymbolObjects = function() {
-#         return(symbols)
-#       },
-#       getSymbolNames = function() if (is.null(names(symbols))) {
-#         return(character(0))
-#       } else {
-#         return(names(symbols))
-#       },
-#       getSymbolObject = function(name, inherits = FALSE) {
-#         ans <- symbols[[name]]
-#         if (is.null(ans))
-#           if (inherits)
-#             if (!is.null(parentST))
-#               ans <- parentST$getSymbolObject(name, TRUE)
-#         return(ans)
-#       },
-#       symbolExists = function(name, inherits = FALSE) {
-#         return(!is.null(getSymbolObject(name, inherits)))
-#       },
-#       ## parentST accessor functions
-#       getParentST = function() {
-#         return(parentST)
-#       },
-#       setParentST = function(ST) parentST <<- ST,
-#       print = function() {
-#         writeLines("symbol table:")
-#         for (i in seq_along(symbols)) symbols[[i]]$print()
-#         if (!is.null(parentST)) {
-#           writeLines("parent symbol table:")
-#           parentST$print()
-#         }
-#       }
-#     )
-#   )
+# This gives simple double* support.
+
+symbolDptr <- R6::R6Class(
+  classname = "symbolDptr",
+  inherit = nCompiler:::symbolBase,
+  public = list(
+    initialize = function(...) {
+      super$initialize(type = 'symbolDptr', ...)
+      self$interface <- FALSE
+      self$overloadDefs <- list(
+        "[" = list(
+          labelAbstractTypes = list(
+            handler = Dptr_Bracket_LAT
+          ),
+          eigenImpl = list(
+            handler = Dptr_Bracket_EIG
+          ),
+          cppOutput = list(
+            handler = nCompiler:::genCppEnv$IndexingBracket
+          )
+        ),
+        "[<-" = list(
+          labelAbstractTypes = list(
+            handler = Dptr_Bracket_LAT
+          ),
+          eigenImpl = list(
+            handler = Dptr_Bracket_EIG,
+            isAssign = TRUE
+          ),
+          cppOutput = list(
+            handler = nCompiler:::genCppEnv$IndexingBracket
+          )
+        )
+      )
+    },
+    shortPrint = function() "symbolDptr",
+    uniqueID = function() "symbolDptr",
+    print = function() writeLines(paste0(self$name, ": symbolDptr")),
+    genCppVar = function() {
+      nCompiler:::cppVarFullClass$new(baseType = "double",
+                                      name = self$name,
+                                      ptr = TRUE,
+                                      ref = FALSE)
+    }
+  )
+)
