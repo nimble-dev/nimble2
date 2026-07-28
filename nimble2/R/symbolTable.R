@@ -52,6 +52,37 @@ symbolMemberFunction <-
       )
   )
 
+symbolNimbleFunction <-
+  R6::R6Class(
+    classname = "symbolNimbleFunction",
+    inherit = nCompiler:::symbolBase,
+    public =
+      list(
+        declaration = NULL,
+        nfProc = NULL,
+        initialize = function(nfProc, ...) {
+          super$initialize(...)
+          self$type <- nfGetDefVar(nfProc$nfGenerator, "name")
+          self$nfProc = nfProc
+        },
+        resolveSym = function(...) {
+          # When the symbol is initialized, not all nfProcs will have their
+          # nClass generators built. But by the time resolveSym is called (during nCompile), they should.
+          nCgen <- self$nfProc$nClassGen
+          nCompiler:::symbolNC$new(
+            name = self$name,
+            isArg = self$isArg, # should always be FALSE because nimble does not support passing nimbleFunctions as args.
+            type = nCompiler:::NCinternals(nCgen)$cpp_classname, # consistent with nCompiler:::symbolTBD$resolveSym.
+            NCgenerator = nCgen
+          )
+        },
+        print = function() writeLines(paste("symbolNimbleFunction", self$name)),
+        genCppVar = function(...) {
+          stop(paste("Error, you should not be generating a cppVar for symbolNimbleFunction", self$name))
+        }
+      )
+  )
+
 symbolInstrList <- 
   R6::R6Class(
     classname = "symbolInstrList",
@@ -85,6 +116,21 @@ symbolModel <-
           ## type == 'local' means it is defined in setupCode and so will need to have an object and be built
           ## type == 'Ronly' means it is a setupArg and may be a different type for different nimbleFunction specializations
           ##                 and it will be like a model in C++ code: not there except by extracted pointers inside of it
+        }
+      )
+  )
+
+symbolModelValues <-
+  R6::R6Class(
+    classname = "symbolModelValues",
+    inherit = nCompiler:::symbolNC,
+    public =
+      list(
+        initialize = function(...) {
+          super$initialize(
+            NCgenerator = nimbleModel:::modelValuesBase_nClass,
+            ...
+          )
         }
       )
   )

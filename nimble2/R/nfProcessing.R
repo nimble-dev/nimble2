@@ -12,7 +12,8 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
     processedCodes = "ANY",
     #    RCfunProcs = "ANY", ## list of RCfunProcessing  or RCvirtualFunProcessing objects
     nimbleProject = "ANY", ## nimbleProjectclass object
-    cppDef = "ANY" ## cppNimbleFunctionClass or cppVirtualNimbleFunctionClass object
+    cppDef = "ANY", ## cppNimbleFunctionClass or cppVirtualNimbleFunctionClass object
+    nClass_classname = "ANY" ## character
   ),
   methods = list(
     show = function() {
@@ -46,6 +47,7 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
       } else {
         name <<- className
       }
+      nClass_classname <<- paste0(nfGetDefVar(.self$nfGenerator, "name"), "_nClass")
       origMethods <<- nf_getMethodList(nfGenerator)
       origMethodNames <- names(origMethods)
       origSetupOutputNames <<- nf_getSetupOutputNames(nfGenerator)
@@ -170,6 +172,10 @@ nfProcessing <- setRefClass("nfProcessing",
       keywordCaseIDs <<- character()
       newInitCode <<- list()
     },
+    updateInstances = function(newInstances) {
+      instances <<- newInstances
+      instances_newSetupEnvs <<- vector("list", length(instances))
+    },
     getSymbolTable = function() setupSymTab,
     getMethodInterfaces = function() origMethods,
     processKeywords_all = function() {},
@@ -264,10 +270,10 @@ nfProcessing <- setRefClass("nfProcessing",
       #   writeLines("***** READY FOR replaceModelSingleValues *****")
       #   browser()
       # }
-      if (inherits(setupSymTab, "uninitializedField")) {
+      #if (inherits(setupSymTab, "uninitializedField")) {
         ## This step could have already been done if the types were needed by another nimbleFunction
-        setupTypesForUsingFunction()
-      }
+      setupTypesForUsingFunction()
+      #}
       # if (debug) browser()
       makeNewSetupLinesOneExpr()
 
@@ -329,6 +335,7 @@ nfProcessing$methods(build_nClassGen = function() {
     nCompiler::NFinternals(new_methods[[thisName]]) <- nCompiler::NFinternals(origMethods[[i]])$clone()
     nCompiler::NFinternals(new_methods[[thisName]])$updateCode(processedCodes[[i]])
   }
+  browser()
   members <- setupSymTab$symbols
   for (mn in names(members)) {
     sym <- members[[mn]]
@@ -345,7 +352,7 @@ nfProcessing$methods(build_nClassGen = function() {
       next
     }
   }
-  classname <- "make_this_random"
+  classname <- nClass_classname
   initL <- list(cpp_init_ = cpp_init_)
   nClassGen <<- eval(substitute(
     nCompiler::nClass(
@@ -620,48 +627,38 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
   # }
   if (is.nf(first_inst)) { ## nimbleFunction
     funList <- lapply(instances_to_use, `[[`, name)
-    nfp <- .self$nimbleProject$nimbleFunction_add(funList) ## will return existing nfProc if it exists
+    nfp <- .self$nimbleProject$nimbleFunction_add_multi(funList) ## will return existing nfProc if it exists
     # className <- class(nf_getRefClassObject(funList[[1]]))
     # .self$neededObjectNames <- c(.self$neededObjectNames, name)
-    newSym <- symbolNimbleFunction$new(name = name, type = "nimbleFunction", nfProc = nfp)
+    if(length(nfp) != 1 || is.null(nfp)) {
+      stop(paste0("Problem handling ", name, ". There were ", length(nfp), " nimbleFunction types across instances (must be 1)."))
+    }
+    newSym <- symbolNimbleFunction$new(name = name, nfProc = nfp[[1]]$nfProc)
     # if (!(className %in% names(.self$neededTypes))) .self$neededTypes[[className]] <- newSym
     return(newSym)
   }
-  # if (inherits(instances[[1]][[name]], "modelValuesBaseClass")) { ## In some cases these could be different derived classes.  If locally defined they must be the same
-  #   if (!firstOnly) {
-  #     if (!all(unlist(lapply(instances, function(x) inherits(x[[name]], "modelValuesBaseClass"))))) {
-  #       warning(paste0("Problem: some but not all instances have ", name, " as a modelValues.  Types must be consistent."))
-  #       return(invisible(NULL))
-  #     }
-  #   }
-  #   ## Generate one set of symbolModelValues objects for the neededTypes, and each of these can have its own mvConf
-  #   ## Generate another symbolModelValues to return and have in the symTab for this compilation
-  #   ## I don't think that mvConf gets used, since they all get Values *
-  #   for (i in seq_along(instances)) {
-  #     className <- class(instances[[i]][[name]])
-  #     if (!(className %in% names(.self$neededTypes))) {
-  #       ## these are used only to build neededTypes
-  #       ntSym <- symbolModelValues(name = name, type = "Values", mvConf = instances[[i]][[name]]$mvConf)
-  #       .self$neededTypes[[className]] <- ntSym
-  #     }
-  #   }
-  #   ## this is used in the symbol table
-  #   .self$neededObjectNames <- c(.self$neededObjectNames, name)
-  #   newSym <- symbolModelValues(name = name, type = "Values", mvConf = NULL)
-  #   return(newSym)
-  # }
+  if (inherits(first_inst, "modelValuesBase_nClass")) { ## In some cases these could be different derived classes.  If locally defined they must be the same
+    if (!firstOnly) {
+      if (!all(unlist(lapply(instances_to_use, function(x) inherits(x[[name]], "modelValuesBase_nClass"))))) {
+        warning(paste0("Problem: some but not all instances have ", name, " as a modelValues.  Types must be consistent."))
+        return(invisible(NULL))
+      }
+    }
+    .self$nimbleProject$modelValues_add(first_inst)
+    return(symbolModelValues$new(
+      name = name,
+      type = "modelValuesBase_nClass",
+      isArg = FALSE
+    )) 
+  }
   if (inherits(first_inst, "modelBase_nClass")) {
     if (!firstOnly) {
       if (!all(unlist(lapply(instances_to_use, function(x) inherits(x[[name]], "modelBase_nClass"))))) {
         warning(paste0("Problem: some but not all instances have ", name, " as a model.  Types must be consistent."))
         return(invisible(NULL))
       }
-      # if (!all(unlist(lapply(instances, function(x) inherits(x[[name]], "RmodelBaseClass"))))) {
-      #   warning(paste0("Problem: models should be provided as R model objects, not C model objects"))
-      #   return(invisible(NULL))
-      # }
     }
-    .self$nimbleProject$model_add(instances_to_use[[1]][[name]])
+    .self$nimbleProject$model_add(first_inst)
     return(symbolModel$new(
       name = name,
       type = "modelBase_nClass",

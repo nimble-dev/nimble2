@@ -28,3 +28,45 @@ test_that("nimbleFunction with setup code compiles and works", {
   cnf$x <- 11:13
   expect_equal(cnf$run(2:4), 11:13 + 2:4)
 })
+
+
+# devtools::load_all()
+nimbleOptions(enableDerivs = FALSE)
+BROWSE_COMPILE_NIMBLE <- FALSE
+
+test_that("nimbleFunction containing another nimbleFunction compiles and works", {
+  nf_inner <- nimbleFunction(
+    setup = TRUE,
+    run = function(y = double(1)) {
+      return(2*y)
+      returnType(double(1))
+    },
+    check = FALSE
+  )
+  
+  nf <- nimbleFunction(
+    setup = function() {
+      x <- 1:3
+      my_inner <- nf_inner()
+    },
+    run = function(y = double(1)) {
+      ans <- my_inner$run(x + y)
+      return(ans)
+      returnType(double(1))
+    },
+    check = FALSE
+  )
+  nf1 <- nf()
+  expect_true(is.nf(nf1))
+  expect_true(is.nf(nf1$my_inner))
+  expect_equal(nf1$run(4:6), 2 * (1:3 + 4:6))
+  
+  cnf <- compileNimble(nf1)
+    
+  expect_equal(cnf$run(2:4), 2*(1:3 + 2:4))
+  expect_equal(cnf$x, 1:3)
+  cnf$x <- 11:13
+  expect_equal(cnf$run(2:4), 2*(11:13 + 2:4))
+
+  rm(cnf); gc()
+})

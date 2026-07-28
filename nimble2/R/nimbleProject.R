@@ -16,6 +16,7 @@ nimbleProjectClass <- R6::R6Class(
     # mvInfos            =  'ANY',		#'list', ## a list of mvInfoClass objects
     # modelDefInfos      =  'ANY',		#'list',
     modelGens = list(),
+    mvGens = list(),
     NFgens = list(),
     # nimbleLists        =  'ANY',   #'list',
     # nfCompInfos        =  'ANY',		#'list', ## list of nfCompilationInfoClass objects
@@ -130,6 +131,69 @@ nimbleProjectClass <- R6::R6Class(
         nCompiler::value(compiled_instances[[i]]) <- initList
       }
     },
+    #################
+    ## modelValues ##
+    #################
+    modelValues_add = function(obj, control = list(), ...) {
+      # A modelValues will be an nClass object.
+      if (!inherits(obj, "modelValuesBase_nClass")) {
+        stop("Argument to modelValues_add is not a nimble modelValues", call. = FALSE)
+      }
+      NCgen <- obj$NCgenerator # modelValues hold this (nClass objects generally do not hold their generator)
+      NCgen_label <- nCompiler::NCinternals(NCgen)$classID
+      if (is.null(mvGens[[NCgen_label]])) {
+        mvGens[[NCgen_label]] <<-
+          list(
+            NCgenerator = NCgen,
+            instances = list(),
+            compiled_instances = list()
+          )
+      }
+      instances <- mvGens[[NCgen_label]]$instances
+      obj_label <- rlang::env_label(as.environment(obj))
+      if (is.null(instances[[obj_label]])) {
+        mvGens[[NCgen_label]]$instances[[obj_label]] <<- obj
+      }
+      obj
+    },
+    modelValues_getResults = function(obj) {
+      NCgen <- obj$NCgenerator
+      NCgen_label <- nCompiler::NCinternals(NCgen)$classID
+      if (is.null(mvGens[[NCgen_label]])) {
+        stop("modelValues generator not found in project", call. = FALSE)
+      }
+      obj_label <- rlang::env_label(as.environment(obj))
+      compiled_instances <- mvGens[[NCgen_label]]$compiled_instances
+      if (is.null(compiled_instances[[obj_label]])) {
+        stop("compiled modelValues instance not found in project", call. = FALSE)
+      }
+      compiled_instances[[obj_label]]
+    },
+    modelValues_add_instantiate = function(genName, compiled_generator) {
+      instances <- mvGens[[genName]]$instances
+      if (!length(instances)) {
+        return(invisible(NULL))
+      }
+      compiled_instances <-
+        seq_along(instances) |>
+        lapply(\(x) compiled_generator$new()) |>
+        setNames(names(instances))
+      mvGens[[genName]]$compiled_instances <<- compiled_instances
+    },
+    modelValues_populate = function(genName) {
+      instances <- mvGens[[genName]]$instances
+      if (!length(instances)) {
+        return()
+      }
+      compiled_instances <- mvGens[[genName]]$compiled_instances
+      #varNames <- instances[[1]]$varInfo |> names()
+      for (i in seq_along(instances)) {
+        #initList <- lapply(varNames, \(x) instances[[i]][[x]]) |> setNames(varNames)
+        #initList <- initList[lapply(initList, is.numeric) |> unlist()]
+        #nCompiler::value(compiled_instances[[i]]) <- initList
+        nCompiler::value(compiled_instances[[i]]) <- instances[[i]]
+      }
+    },
     #####################
     ## nimbleFunctions ##
     #####################
@@ -148,7 +212,7 @@ nimbleProjectClass <- R6::R6Class(
           generatorFunNames
         }
       uniqueGeneratorNames <- unique(allGeneratorNames)
-      # I am not sure ans is needed here.
+      # ans is used when called from makeTypeObj_impl.
       ans <- vector("list", length(funList))
       for (uGN in uniqueGeneratorNames) {
         thisBool <- allGeneratorNames == uGN
@@ -182,11 +246,26 @@ nimbleProjectClass <- R6::R6Class(
       }
       compiled_units
     },
+    nimbleFunction_get_compiled_internal = function(unit) {
+      generatorName <- nfGetDefVar(unit, "name")
+      if (!generatorName %in% names(NFgens)) {
+        stop(paste0("nimbleFunction generator ", generatorName, " not found in project"), call. = FALSE)
+      }
+      env_label <- rlang::env_label(as.environment(unit))
+      compiled_instances <- NFgens[[generatorName]]$compiled_instances
+      if (!env_label %in% names(compiled_instances)) {
+        stop(paste0("nimbleFunction instance of generator ", generatorName, " not found in project"), call. = FALSE)
+      }
+      compiled_instances[[env_label]]
+    },
     # nimbleFunction_add replaces compileNimbleFunction with initialTypeInference=TRUE
     nimbleFunction_add = function(fun, generatorName = NULL, control = list(), ...) {
       # reset argument has been removed and may be re-added if necessary.
       # fun could be character (a generator name) or a singleton or a list
       if (is.character(fun)) {
+        # I don't think this case (from nimble) will be needed.  I am putting in a hard stop to catch any use cases.
+        # If it is needed, the logic below may need cleaning up because the tracking step is only in the else clause.
+        stop("Found a case of a character argument to nimbleProject$nimbleFunction_add. Please investigate.", call. = FALSE)
         # could be the name of a generator.
         tmp <- NFgens[[fun]]
         if (is.null(tmp)) stop(paste0("nimbleFunction generator name ", fun, " not recognized in this project."), call. = FALSE)
@@ -237,6 +316,7 @@ nimbleProjectClass <- R6::R6Class(
             RinitTypesProcessed = FALSE,
             instances = list(),
             compiled_instances = list(),
+            initialTypeInferenceDone = FALSE,
             nfProc = NULL
           )
       }
@@ -287,17 +367,23 @@ nimbleProjectClass <- R6::R6Class(
       setupOutputSymbolClasses <- setupOutputNames |>
         lapply(\(x) class(setupSymTab$getSymbol(x))[1]) |>
         unlist()
-      isModel <- setupOutputSymbolClasses %in% c("symbolModel")
-      setupOutputNames_basic <- setupOutputNames[!isModel]
+      isModel <- setupOutputSymbolClasses == "symbolModel"
+      isModelValues <- setupOutputSymbolClasses == "symbolModelValues"
+      isNF <- setupOutputSymbolClasses == "symbolNimbleFunction"
+      isBasic <- !(isModel | isModelValues | isNF)
+      setupOutputNames_basic <- setupOutputNames[isBasic]
       setupOutputNames_models <- setupOutputNames[isModel]
-
+      setupOutputNames_NFs <- setupOutputNames[isNF]
+      
+      # new setup outputs can't ever be nimbleFunctions or ...
       newSetupOutputSymbolClasses <- newSetupOutputNames |>
         lapply(\(x) class(setupSymTab$getSymbol(x))[1]) |>
         unlist()
       isModel <- newSetupOutputSymbolClasses %in% c("symbolModel")
-      newSetupOutputNames_basic <- newSetupOutputNames[!isModel]
+      isBasic <- !isModel
+      newSetupOutputNames_basic <- newSetupOutputNames[isBasic]
       newSetupOutputNames_models <- newSetupOutputNames[isModel]
-
+      
       for (i in seq_along(instances)) {
         inst <- instances[[i]]
         inst_newSetupEnv <- NFgens[[generatorName]]$nfProc$instances_newSetupEnvs[[i]]
@@ -308,6 +394,11 @@ nimbleProjectClass <- R6::R6Class(
           setupOutputList <- c(
             setupOutputList,
             setupOutputNames_models |> lapply(\(x) model_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_models)
+          )
+        if(length(setupOutputNames_NFs))
+          setupOutputList <- c(
+            setupOutputList,
+            setupOutputNames_NFs |> lapply(\(x) nimbleFunction_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_NFs)
           )
         if(length(newSetupOutputNames_basic))
           setupOutputList <- c(
@@ -325,10 +416,31 @@ nimbleProjectClass <- R6::R6Class(
       NFgens[[generatorName]]$compiled_instances <<- compiled_instances
     },
     process = function() {
-      for (i in seq_along(NFgens)) {
+      # The step of initial type inference can generate calls add more nimbleFunctions or other objects to the project.
+      # So we batch through until done.
+      if(!length(NFgens)) return(invisible(NULL))
+      done <- FALSE
+      num_NFgens <- 0 # current number of generators
+      # 1. repeat until no new nimbleFunction generators have been added.
+      while (!done) {
+        current_num_NFgens <- length(NFgens)
+        if(length(NFgens) > num_NFgens) {
+          for (i in (num_NFgens + 1):current_num_NFgens) {
+            nfProc <- nimbleFunction_setup_proc(generatorName = names(NFgens)[i])
+            nfProc$setupTypesForUsingFunction() # this may arbitrarily add more nimbleFunctions and/or instances
+          }
+        }
+        if(length(NFgens) == current_num_NFgens) done <- TRUE
+        num_NFgens <- current_num_NFgens
+      }
+      # 2. update the list of instances in each nfProc
+      # 3. run process to eval new setup code in every instance.
+      for(i in seq_along(NFgens)) {
         nfProc <- nimbleFunction_setup_proc(generatorName = names(NFgens)[i])
+        nfProc$updateInstances(NFgens[[i]]$instances)
         nfProc$process()
       }
+      invisible(NULL)
     },
     get_nComp_units = function() {
       nClass_units <- NFgens |>

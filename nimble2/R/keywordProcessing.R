@@ -947,26 +947,28 @@ dollarSign_keywordInfo <- keywordInfoClass(
       )
       return(newRunCode)
     }
-    # if (class == "symbolNimbleFunction") {
-    #   # 	Code is of the form myNimbleFunction$myMethod
-    #   #   or myNimbleFunction$myVar
+    if (class == "symbolNimbleFunction") {
+      # 	Code is of the form myNimbleFunction$myMethod
+      #   or myNimbleFunction$myVar
 
 
-    #   # 	Note that we have cut off '()' in the case of myMethod, so we must inspect the
-    #   #   nested symbol for myMethod to determine whether it is a method or variable
+      # 	Note that we have cut off '()' in the case of myMethod, so we must inspect the
+      #   nested symbol for myMethod to determine whether it is a method or variable
+      code[[2]] <- callerCode
+      return(code)
 
-    #   nf_fieldName <- as.character(code[[3]])
-    #   objectSymbol <- symObj$nfProc$setupSymTab$getSymbolObject(nf_fieldName)
-    #   if (class(objectSymbol)[[1]] == "symbolMemberFunction") {
-    #     newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
-    #     return(newRunCode)
-    #   } else {
-    #     # We *assume* that if its not a member function, it should be treated with
-    #     # nfVar
-    #     newRunCode <- substitute(nfVar(NIMBLEFXN, VARNAME), list(NIMBLEFXN = callerCode, VARNAME = nf_fieldName))
-    #     return(newRunCode)
-    #   }
-    # }
+      # nf_fieldName <- as.character(code[[3]])
+      # objectSymbol <- symObj$nfProc$setupSymTab$getSymbolObject(nf_fieldName)
+      # if (class(objectSymbol)[[1]] == "symbolMemberFunction") {
+      #   newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
+      #   return(newRunCode)
+      # } else {
+      #   # We *assume* that if its not a member function, it should be treated with
+      #   # nfVar
+      #   newRunCode <- substitute(nfVar(NIMBLEFXN, VARNAME), list(NIMBLEFXN = callerCode, VARNAME = nf_fieldName))
+      #   return(newRunCode)
+      # }
+    }
     # if (class == "symbolNimbleList") {
     #   # 	Code is of the form
     #   #  myNimbleList$myVar
@@ -1001,15 +1003,24 @@ singleBracket_keywordInfo <- keywordInfoClass(
         stop(paste0("incorrect syntax for accessing element of modelValues: ", deparse(code)))
       }
       singleMVAccess_ArgList <- list(code = code, modelValues = code[[2]], var = code[[3]], row = code[[4]])
-      accessName <- singleModelValuesAccessor_SetupTemplate$makeName(singleMVAccess_ArgList)
-      addNecessarySetupCode(accessName, singleMVAccess_ArgList, singleModelValuesAccessor_SetupTemplate, nfProc)
+      fields <- singleModelValuesAccessor_SetupTemplate$makeFields(singleMVAccess_ArgList)
+      addNecessarySetupAndInitCode(singleModelValuesAccessor_SetupTemplate, singleMVAccess_ArgList, nfProc)
       if (length(code) == 4) {
         indexExpr <- code[[4]]
       } else {
         indexExpr <- substitute(1)
       }
-
-      return(substitute(ACCESS[INDEX], list(ACCESS = as.name(accessName), INDEX = indexExpr)))
+      # need to find nDim
+      nList_name <- names(fields)[1]
+      # Next steps with instances could be separated and generalized.
+      varName <- if(is.character(code[[3]])) code[[3]] 
+        else nfProc$intances[[1]][[as.character(code[[3]])]]
+      nDim <- nfProc$instances[[1]][[as.character(code[[2]])]]$varInfo$vars[[varName]]$nDim
+      literal_part <- paste0( nList_name, "->access_at((", indexExpr, ")-1)")
+      # cppCode <- paste0("nAs(", nList_name, "->access_at(", indexExpr, "), double(", nDim, "))")
+      return(substitute(nAs(nCpp(LITERAL), double(NDIM)), 
+                        list(LITERAL = literal_part,
+                             NDIM = nDim)))
     }
     return(code)
   }
@@ -1936,7 +1947,6 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
       INDSNAME = as.name(setupNames["indsName"]),
       NODEVARNAME = argList$nodeExpr
     )
-    browser()
     if(!nodeIsLiteral) {
       subList$VARNAME_EXPR <- 
       substitute(VARNAME <- as.character(VARANDINDICES$varName),
@@ -1972,6 +1982,43 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
   }
 )
 
+singleModelValuesAccessor_SetupTemplate <- nimble2:::setupCodeTemplate(
+  makeID = function(argList, ...) {
+    Rname2CppName(deparse(argList$code))
+  },
+  makeSetupNames = function(argList, ...) {
+    mvName <- as.character(argList$modelValues) # force retaining it since it will only appear in nCpp and so not be found by all.names().
+    c(mvName = mvName)
+  },
+  makeFields = function(argList, ...) {
+    baseName <- makeID(argList, ...)
+    nList_name <- paste0(baseName, "_nList")
+    newSym <- nCompiler:::type2symbol(nCompiler:::nListBase_nClass())
+    list(newSym) |> setNames(c(nList_name))
+  },
+  initCodeTemplate = quote({
+    # literal C++: nListBase_obj = interface_ptr_2_nList_ptr(modelValues->get_interface_ptr(var_name))
+    nCpp(CODE)
+  }),
+  makeInitCodeSubList = function(fields, setupNames, argList, ...) {
+    nListBase_obj_name <- names(fields)[1]
+    mvName <- as.character(argList$modelValues)
+    varName <- argList$var
+    if(is.character(varName)) {
+      varName <- paste0("\"", varName, "\"")
+    } else
+      varName <- as.character(varName)
+
+    code <- paste0(
+      nListBase_obj_name, 
+      " = interface_ptr_2_nList_ptr(",
+      mvName,
+      "->get_interface_ptr(",
+      varName,
+      "))")
+    list(CODE = code)
+  }
+)
 # singleModelIndexAccess_SetupTemplate <- setupCodeTemplateClass(
 #   # Note to progammer: required fields of argList are code, varAndIndices, node (character) and model(expression)
 #   makeOtherNames = function(name, argList) {
@@ -2273,10 +2320,11 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
 
   if (is.null(symObj)) stop("Problem looking up object")
 
-  if (symObj$type == "nimbleFunction") {
+  if (inherits(symObj, "symbolNimbleFunction")) {
     # thisRCfunProc <- symObj$nfProc$RCfunProcs[[memFunName]]
     # if (is.null(thisRCfunProc)) stop(paste0("Cannot handle this expression (member function may not exist): ", deparse(code)), call. = FALSE)
-    thisFunctionMatch <- nCompiler::NFinternals(symObj$nFun)$default_matchDef
+    thisFunctionMatch <- 
+      nCompiler:::NFinternals(symObj$nfProc$origMethods[[memFunName]])$default_matchDef
     return(matchAndFill.call(thisFunctionMatch, code))
   }
   if (inherits(symObj, "symbolModel")) {
