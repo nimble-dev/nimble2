@@ -335,7 +335,6 @@ nfProcessing$methods(build_nClassGen = function() {
     nCompiler::NFinternals(new_methods[[thisName]]) <- nCompiler::NFinternals(origMethods[[i]])$clone()
     nCompiler::NFinternals(new_methods[[thisName]])$updateCode(processedCodes[[i]])
   }
-  browser()
   members <- setupSymTab$symbols
   for (mn in names(members)) {
     sym <- members[[mn]]
@@ -637,9 +636,9 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
     # if (!(className %in% names(.self$neededTypes))) .self$neededTypes[[className]] <- newSym
     return(newSym)
   }
-  if (inherits(first_inst, "modelValuesBase_nClass")) { ## In some cases these could be different derived classes.  If locally defined they must be the same
+  if (inherits(first_inst, "modelValues")) { ## In some cases these could be different derived classes.  If locally defined they must be the same
     if (!firstOnly) {
-      if (!all(unlist(lapply(instances_to_use, function(x) inherits(x[[name]], "modelValuesBase_nClass"))))) {
+      if (!all(unlist(lapply(instances_to_use, function(x) inherits(x[[name]], "modelValues"))))) {
         warning(paste0("Problem: some but not all instances have ", name, " as a modelValues.  Types must be consistent."))
         return(invisible(NULL))
       }

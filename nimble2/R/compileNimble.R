@@ -185,20 +185,14 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
           ))
         }
       }
-      # # nComp_units[[i]] <- RCfun_2_nFun(units[[i]], foundUnitsEnv)
-      # nComp_units[[i]] <- units[[i]]
-      # foundUnitsEnv[[names(units)[i]]] <- nComp_units[[i]]
-      # if (isTRUE(control[["nCompiler_expandUnits"]])) {
-      #   for (EN in units_extraNames[[i]]) {
-      #     foundUnitsEnv[[EN]] <- nComp_units[[i]]
-      #   }
-      # }
-      # environment(units[[i]])$nfMethodRCobject[["nimbleProject"]] <- project
       ans[[i]] <-
         project$RCfunction_add(units[[i]], control = control)
       if (names(units)[i] != "") names(ans)[i] <- names(units)[i]
     }
   }
+
+  # N.B. modelValues are not allowed as units for compileNimble.
+  # They can only be included as members from setup code.
 
   modelUnits <- unitTypes == "model"
   if (sum(modelUnits) > 0) {
@@ -239,6 +233,7 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
 
   compiled_units <- vector("list", length = length(units))
 
+  # simple functions (rcf) do not need instantiation, so they can be extracted first.
   if (sum(rcfUnits) > 0) {
     whichUnits <- which(rcfUnits)
     for (i in whichUnits) {

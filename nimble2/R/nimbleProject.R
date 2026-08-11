@@ -77,6 +77,7 @@ nimbleProjectClass <- R6::R6Class(
       }
       obj
     },
+    # model_getResults is called from compileNimble
     model_getResults = function(obj) {
       NCgen <- obj$NCgenerator
       NCgen_label <- nCompiler::NCinternals(NCgen)$classID
@@ -90,6 +91,8 @@ nimbleProjectClass <- R6::R6Class(
       }
       compiled_instances[[obj_label]]
     },
+    # model_get_compiled_internals is called from nimbleFunction_populate via instantiate
+    # It may turn out to be an identical need to model_getResults, and if so could be combined.
     model_get_compiled_internal = function(obj) {
       # This is called when instantiating a nimbleFunction that may need the compiled model object.
       NCgen <- obj$NCgenerator
@@ -136,7 +139,7 @@ nimbleProjectClass <- R6::R6Class(
     #################
     modelValues_add = function(obj, control = list(), ...) {
       # A modelValues will be an nClass object.
-      if (!inherits(obj, "modelValuesBase_nClass")) {
+      if (!inherits(obj, "modelValues")) {
         stop("Argument to modelValues_add is not a nimble modelValues", call. = FALSE)
       }
       NCgen <- obj$NCgenerator # modelValues hold this (nClass objects generally do not hold their generator)
@@ -156,7 +159,9 @@ nimbleProjectClass <- R6::R6Class(
       }
       obj
     },
-    modelValues_getResults = function(obj) {
+    # A modelValues_getResults is not needed because
+    # modelValues are not supported as compileNimble compilation units
+    modelValues_get_compiled_internal = function(obj) {
       NCgen <- obj$NCgenerator
       NCgen_label <- nCompiler::NCinternals(NCgen)$classID
       if (is.null(mvGens[[NCgen_label]])) {
@@ -169,7 +174,7 @@ nimbleProjectClass <- R6::R6Class(
       }
       compiled_instances[[obj_label]]
     },
-    modelValues_add_instantiate = function(genName, compiled_generator) {
+    modelValues_instantiate = function(genName, compiled_generator) {
       instances <- mvGens[[genName]]$instances
       if (!length(instances)) {
         return(invisible(NULL))
@@ -186,11 +191,7 @@ nimbleProjectClass <- R6::R6Class(
         return()
       }
       compiled_instances <- mvGens[[genName]]$compiled_instances
-      #varNames <- instances[[1]]$varInfo |> names()
       for (i in seq_along(instances)) {
-        #initList <- lapply(varNames, \(x) instances[[i]][[x]]) |> setNames(varNames)
-        #initList <- initList[lapply(initList, is.numeric) |> unlist()]
-        #nCompiler::value(compiled_instances[[i]]) <- initList
         nCompiler::value(compiled_instances[[i]]) <- instances[[i]]
       }
     },
@@ -373,6 +374,7 @@ nimbleProjectClass <- R6::R6Class(
       isBasic <- !(isModel | isModelValues | isNF)
       setupOutputNames_basic <- setupOutputNames[isBasic]
       setupOutputNames_models <- setupOutputNames[isModel]
+      setupOutputNames_modelValues <- setupOutputNames[isModelValues]
       setupOutputNames_NFs <- setupOutputNames[isNF]
       
       # new setup outputs can't ever be nimbleFunctions or ...
@@ -382,24 +384,35 @@ nimbleProjectClass <- R6::R6Class(
       isModel <- newSetupOutputSymbolClasses %in% c("symbolModel")
       isBasic <- !isModel
       newSetupOutputNames_basic <- newSetupOutputNames[isBasic]
-      newSetupOutputNames_models <- newSetupOutputNames[isModel]
+      newSetupOutputNames_models <- newSetupOutputNames[isModel] # new setup outputs should never be models, so this scheme can be removed here.
       
       for (i in seq_along(instances)) {
         inst <- instances[[i]]
-        inst_newSetupEnv <- NFgens[[generatorName]]$nfProc$instances_newSetupEnvs[[i]]
+        # Collect setup outpus by category.
+        # 1. basic outputs (numeric, character, logical, etc.)
         setupOutputList <- setupOutputNames_basic |>
           lapply(\(x) inst[[x]]) |>
           setNames(setupOutputNames_basic)
+        # 2. models
         if(length(setupOutputNames_models)) 
           setupOutputList <- c(
             setupOutputList,
             setupOutputNames_models |> lapply(\(x) model_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_models)
           )
+        # 3. modelValues
+        if(length(setupOutputNames_modelValues)) 
+          setupOutputList <- c(
+            setupOutputList,
+            setupOutputNames_modelValues |> lapply(\(x) modelValues_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_modelValues)
+          )
+        # 4. nimbleFunctions
         if(length(setupOutputNames_NFs))
           setupOutputList <- c(
             setupOutputList,
             setupOutputNames_NFs |> lapply(\(x) nimbleFunction_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_NFs)
           )
+        # new setup outputs:
+        inst_newSetupEnv <- NFgens[[generatorName]]$nfProc$instances_newSetupEnvs[[i]]
         if(length(newSetupOutputNames_basic))
           setupOutputList <- c(
             setupOutputList,
@@ -442,6 +455,7 @@ nimbleProjectClass <- R6::R6Class(
       }
       invisible(NULL)
     },
+    # get_nComp_units collects the nFunction and nClass units to compile via nCompile.
     get_nComp_units = function() {
       nClass_units <- NFgens |>
         lapply(\(x) x$nfProc$nClassGen) |>
@@ -449,7 +463,10 @@ nimbleProjectClass <- R6::R6Class(
       model_units <- modelGens |>
         lapply(\(x) x$NCgenerator) |>
         setNames(names(modelGens))
-      c(RCfuns, nClass_units, model_units)
+      mv_units <- mvGens |>
+        lapply(\(x) x$NCgenerator) |>
+        setNames(names(mvGens))
+      c(RCfuns, nClass_units, model_units, mv_units)
     },
     instantiate = function(nCompile_results) {
       # instantiate nClass objects
@@ -472,10 +489,21 @@ nimbleProjectClass <- R6::R6Class(
         }
         model_instantiate(NCgen_label, nCompile_results[[NCgen_label]])
       }
+      for(i in seq_along(mvGens)) {
+        NCgen_label <- names(mvGens)[i]
+        if (!NCgen_label %in% names(nCompile_results)) {
+          stop(paste0("No compiled result found for modelValues generator ", NCgen_label), call. = FALSE)
+        }
+        modelValues_instantiate(NCgen_label, nCompile_results[[NCgen_label]])
+      }
       ## Populate
       for (i in seq_along(modelGens)) {
         NCgen_label <- names(modelGens)[i]
         model_populate(NCgen_label)
+      }
+      for(i in seq_along(mvGens)) {
+        NCgen_label <- names(mvGens)[i]
+        modelValues_populate(NCgen_label)
       }
       for (i in seq_along(NFgens)) {
         generatorName <- names(NFgens)[i]

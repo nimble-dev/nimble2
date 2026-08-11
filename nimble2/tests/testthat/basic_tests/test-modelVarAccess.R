@@ -1,4 +1,4 @@
-library(nimble2)
+# library(nimble2)
 
 nimbleOptions(enableDerivs = FALSE)
 
@@ -54,9 +54,9 @@ test_that("model[[node]] when node is a (possibly indexed) scalar works", {
   rm(comp); gc()
 })
 
-library(nimble2)
+#library(nimble2)
 nimbleOptions(enableDerivs = FALSE)
-nCompiler::nOptions(pause_after_writing_files = TRUE)
+nCompiler::nOptions(pause_after_writing_files = FALSE)
 BROWSE_COMPILE_NIMBLE <- FALSE
 
 test_that("model[[node]] when node is non-scalar", {
@@ -134,12 +134,12 @@ test_that("model[[node]] when node is non-scalar", {
   rm(comp); gc()
 })
 
-library(nimble2)
+#library(nimble2)
 nimbleOptions(enableDerivs = FALSE)
-nCompiler::nOptions(pause_after_writing_files = TRUE)
+nCompiler::nOptions(pause_after_writing_files = FALSE)
 BROWSE_COMPILE_NIMBLE <- FALSE
 
-test_that("model[[node]] when node is non-scalar", {
+test_that("model[[node]] works when node is non-scalar", {
   set.seed(1)
   code <- quote({
     tau ~ dunif(0, 100)
