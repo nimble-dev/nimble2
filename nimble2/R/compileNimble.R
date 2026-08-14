@@ -69,7 +69,12 @@ nimble_nCompiler_opDefs <- list(
   model_simulate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getLogProb = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   getOrSetValues_ = list(matchDef = function(multiCopier) {},
-    labelAbstractTypes = list(handler = getOrSetValues_LAT))
+    labelAbstractTypes = list(handler = getOrSetValues_LAT)),
+  nimCopy_ = list(
+    matchDef = function(from, fromRow, to, toRow) {},
+    labelAbstractTypes = list(handler = "custom_call",
+                              recurse = TRUE,
+                              returnType = nCompiler:::symbolVoid$new()))
 )
 
 #' @importFrom nCompiler registerOpDef deregisterOpDef

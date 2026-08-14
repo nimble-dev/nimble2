@@ -9,7 +9,7 @@ nCompiler::nOptions(pause_after_writing_files = FALSE)
 
 message("values needs updating to work with indexing singletons and blanks.")
 
-test_that("values(mode, nodes) works", {
+test_that("values(model, nodes) works", {
   set.seed(1)
   code <- quote({
     tau ~ dunif(0, 100)
@@ -83,7 +83,7 @@ test_that("values(mode, nodes) works", {
   #
   # uncompiled
   expectedU <- c(m$y[1:3], as.numeric(m$z[2:4, 1:3]))
-  nf1$get()
+  #nf1$get()
   expect_equal( expectedU,
                nf1$get())
   # compiled
@@ -122,4 +122,6 @@ test_that("values(mode, nodes) works", {
   comp$nf1$set_with_use(new_values)
   expected <- c(comp$m$y[1:3], as.numeric(comp$m$z[2:4, 1:3]))
   expect_equal(3*new_values, expected)
+  comp$nf1 <- comp$m <- NULL
+  rm(comp); gc()
 })
