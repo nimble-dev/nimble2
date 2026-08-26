@@ -1,3 +1,11 @@
+# nimbleSizeCallNames is needed for nf_checkDSLcode for backward compatibility.
+# Checking case-by-case support is a separate question.
+# File nimbleSizeCallNames.R is created as follows:
+# > paste("nimbleSizeCallNames <-", deparse(nimble:::sizeCalls |> names()) |> paste0(collapse = "\n")) |> writeLines()
+
+
+# This list is for backward compatibility for nf_checkDSLcode.
+# Case-by-base implementation is a separate question.
 otherDSLcalls <- c(
   "{",
   "[[",
@@ -21,6 +29,8 @@ otherDSLcalls <- c(
   "void"
 )
 
+# This list is used for keyword replacement and code checking.
+# Implementation compatibility may need case by case attention.
 nimKeyWords <- list(
   copy = "nimCopy",
   print = "nimPrint",
@@ -48,7 +58,9 @@ nimKeyWords <- list(
   derivs = "nimDerivs"
 )
 
-# to-do: determine how this meshes with nCompiler
+# We retain this list so that nf_checkDSLcode can work
+# with backward compatibility. Implementation is another
+# question, to be addressed call by call.
 specificCallReplacements <- list(
   #    '^' = 'pow', # Has its own handler below
   "%%" = "nimMod",

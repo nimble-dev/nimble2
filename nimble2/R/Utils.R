@@ -68,3 +68,9 @@ setNimType <- function(x, value) {
   attr(x, "nimble_type") <- value
   x
 }
+
+# This is a placeholder needed by nf_checkDSLcode
+# until we implement the nimble2 version of nimbleList.
+is.nlGenerator <- function(...) {
+  FALSE
+}

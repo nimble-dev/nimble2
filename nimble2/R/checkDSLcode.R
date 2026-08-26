@@ -1,3 +1,4 @@
+
 n2_update_and_check_RCfun_code <- function(f,
                                            check = FALSE,
                                            methodNames = NULL,
@@ -29,10 +30,10 @@ n2_update_and_check_RCfun_code <- function(f,
 
 nf_checkDSLcode <- function(code, methodNames, setupVarNames, args, where = NULL) {
   validCalls <- c(
-    names(nCompiler:::operatorDefEnv), # names(sizeCalls), # To-do: comb through this
+    nimbleSizeCallNames, # see note in keywords.R.
     otherDSLcalls,
     names(specificCallReplacements),
-    names(nimKeyWords),
+    nimKeyWords,
     methodNames,
     setupVarNames
   )
@@ -43,7 +44,8 @@ nf_checkDSLcode <- function(code, methodNames, setupVarNames, args, where = NULL
 
   ## Find the 'y' in cases of x$y() and x[]$y() and x[[]]$y().
 
-  nfMethods <- findMethodsInExprClass(RparseTree2ExprClasses(code))
+  # nfMethods <- findMethodsInExprClass(RparseTree2ExprClasses(code))
+  nfMethods <- findMethodsInRcode(code)
 
   ## don't check RHS of $ to ensure it is a valid nf method because no current way to easily find the methods of nf's defined in setup code
   nonDSLcalls <- calls[!(calls %in% c(validCalls, nfMethods))]
@@ -91,6 +93,36 @@ nf_checkDSLcode <- function(code, methodNames, setupVarNames, args, where = NULL
     }
   }
   return(0)
+}
+
+# This replaces findMethodsInExprClass in nimble
+# That used exprClasses, creating a separate parsing and 
+# AST creation just for the checking. We think
+# the task is simple enough to do it in a pure R
+# syntax tree here instead.
+findMethodsInRcode <- function(code) {
+  if(is.name(code)) return(NULL)
+  if(is.numeric(code)) return(NULL)
+  if(is.logical(code)) return(NULL)
+  if(is.character(code)) return(NULL)
+  fxn_expr <- code[[1]]
+  # Always recurse. If there are no args, then
+  # res will be NULL
+  res <- lapply(code[-1], findMethodsInRcode) |> unlist()
+  if(is.name(fxn_expr)) {
+    # We have a simple call, foo(arg1, arg2), so just return res
+    return(res)
+  }
+  # We have a chained call, like obj$foo(arg1, arg2)
+  # fxn_expr is the `obj$foo` part, so pull that apart next
+  fxn_expr_op <- fxn_expr[[1]]
+  if(identical(fxn_expr_op, as.name("$"))) {
+    method_name <- deparse(fxn_expr[[3]])
+    # recursion allows a$b(x)$c(y) to find both c and b.
+    return(c(method_name, findMethodsInRcode(fxn_expr[[2]]), res))
+  }
+  # We have some unknown case, so return NULL
+  NULL
 }
 
 nf_checkDSLcode_buildDerivs <- function(code, buildDerivs) {
