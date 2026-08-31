@@ -68,7 +68,10 @@ symbolNimbleFunction <-
         resolveSym = function(...) {
           # When the symbol is initialized, not all nfProcs will have their
           # nClass generators built. But by the time resolveSym is called (during nCompile), they should.
-          nCgen <- self$nfProc$nClassGen
+          nCgen <- self$nfProc$NCgenerator
+          if (is.null(nCgen)) {
+            stop("While resolving symbol: NCgenerator is NULL")
+          }
           nCompiler:::symbolNC$new(
             name = self$name,
             isArg = self$isArg, # should always be FALSE because nimble does not support passing nimbleFunctions as args.

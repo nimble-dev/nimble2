@@ -20,6 +20,28 @@ nimbleFunctionBase <- setRefClass(
   )
 ) # 	$runRelated
 
+#' @export
+nimbleFunctionVirtual <- function(contains = NULL,
+                                  run = function() { },
+                                  methods     = list(),
+                                  name        = NA,
+                                  methodControl = list()) {
+  # We simply pack methodControl into a list to pass into the ... 
+  # arg of nimbleFunction. This will be used to update the
+  # compileInfo virtual and abstract settings for the method nFunctions.
+  # We must also set the compileInfo$createFromR to FALSE if there are any
+  # abstract methods. This is done in nfProcessing$build_NCgenerator
+  virtual <- list(methodControl = methodControl)
+  nf <- nimbleFunction(
+    setup = TRUE,
+    run = run,
+    methods = methods,
+    contains = contains,
+    name = name,
+    virtual = virtual)
+  nf
+}
+
 #' @importFrom nCompiler nFunction
 #' @export
 nimbleFunction <- function(setup = NULL,
@@ -30,7 +52,8 @@ nimbleFunction <- function(setup = NULL,
                            buildDerivs = list(),
                            name = NA,
                            check = getNimbleOption("checkNimbleFunction"),
-                           where = parent.frame() # getNimbleFunctionEnvironment()
+                           where = parent.frame(), # getNimbleFunctionEnvironment()
+                           ... # ... is added to nimble2 to support nimbleFunctionVirtual
 ) {
   force(where) # so that we can get to namespace where a nf is defined by using topenv(parent.frame(2)) in getNimbleFunctionEnvironment()
   if (is.logical(setup)) if (setup) setup <- function() {} else setup <- NULL
@@ -79,11 +102,22 @@ nimbleFunction <- function(setup = NULL,
     ))
   }
 
+  virtual <- FALSE # used in nimbleProject
+
+  dotsList <- list(...)
+  dotsVirtual <- dotsList$virtual
+  is_NFV <- FALSE # NFV = nimbleFunctionVirtual
+  methodControl <- NULL
+  if(!is.null(dotsVirtual)) {
+    is_NFV <- TRUE
+    virtual <- TRUE
+    methodControl <- dotsVirtual$methodControl
+  }
+
   if (isTRUE(getNimbleOption("enableDerivs")) && isTRUE(buildDerivs)) {
     stop("'buildDerivs' cannot be 'TRUE' when a setup function is provided. Please specify the specific method(s) for which 'buildDerivs' should be set.")
   }
 
-  virtual <- FALSE
   # we now include the namespace in the name of the RefClass to avoid two nfs having RefClass of same name but existing in different namespaces
   if (is.na(name)) name <- nf_refClassLabelMaker(envName = environmentName(where))
   className <- name
@@ -127,6 +161,19 @@ nimbleFunction <- function(setup = NULL,
     )
   }
   names(methodList) <- names(origMethodList)
+  NCcompileInfo <- list()
+
+  if(is_NFV) {
+    for(m in names(methodList)) {
+      CI <- nCompiler::NFinternals(methodList[[m]])$compileInfo
+      CI$virtual <- TRUE
+      if(!isFALSE(methodControl[[m]]$required)) { #cf nimble's cppVirtualNimbleFunctionClass$processNFprof
+        CI$abstract <- TRUE
+        anyAbstract <- TRUE
+      }
+      nCompiler::NFinternals(methodList[[m]])$compileInfo <- CI
+    }
+  }
 
   ## record any setupOutputs declared by setupOutput()
   setupOutputsDeclaration <- nf_processSetupFunctionBody(
@@ -151,6 +198,7 @@ nimbleFunction <- function(setup = NULL,
   .namesToCopyFromSetup <- setdiff(.namesToCopy, .namesToCopyFromGlobalSetup)
   ## create a list to hold all specializations (instances) of this nimble function.  The following objects are accessed in environment(generatorFunction) in the future
   ## create the generator function, which is returned from nimbleFunction()
+  ## To-do: consider whether the nimbleFunctionVirtual case should return an empty proxy generator (returning NULL), as in nimble.
   generatorFunction <- eval(nf_createGeneratorFunctionDef(setup))
   force(contains) ## eval the contains so it is in this environment
   formals(generatorFunction) <- nf_createGeneratorFunctionArgs(setup, parent.frame())
@@ -173,7 +221,7 @@ nimbleFunction <- function(setup = NULL,
     "setup", "run", "methods", "methodList", "name", "className", "contains",
     "buildDerivs", "virtual", ".globalSetupEnv", ".namesToCopy",
     ".namesToCopyFromGlobalSetup", ".namesToCopyFromSetup",
-    "declaredSetupOutputNames", ".globalSetupEnv"
+    "declaredSetupOutputNames", ".globalSetupEnv", "methodControl"
   )) {
     GFenv[[var]] <- get(var)
   }

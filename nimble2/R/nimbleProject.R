@@ -260,9 +260,21 @@ nimbleProjectClass <- R6::R6Class(
       compiled_instances[[env_label]]
     },
     # nimbleFunction_add replaces compileNimbleFunction with initialTypeInference=TRUE
-    nimbleFunction_add = function(fun, generatorName = NULL, control = list(), ...) {
+    nimbleFunction_add = function(fun = NULL, generator = NULL, generatorName = NULL, control = list(), ...) {
       # reset argument has been removed and may be re-added if necessary.
       # fun could be character (a generator name) or a singleton or a list
+
+      # The case with fun = NULL and generator provided represents a nimbleFunctionVirtual.
+      if(is.null(fun)) {
+        if(is.null(generator)) stop("nimbleFunction_add must get fun or generator.")
+        generatorName <- environment(generator)$name
+        nimbleFunction_track(generator = generator, generatorName = generatorName)
+        nfProc <- nimbleFunction_setup_proc(generatorName = generatorName)
+        return(nfProc)
+      } else {
+        if(!is.null(generator)) stop("nimbleFunction_add must get fun or generator, not both.")
+      }
+
       if (is.character(fun)) {
         # I don't think this case (from nimble) will be needed.  I am putting in a hard stop to catch any use cases.
         # If it is needed, the logic below may need cleaning up because the tracking step is only in the else clause.
@@ -305,15 +317,17 @@ nimbleProjectClass <- R6::R6Class(
       nfProc
     },
     # Refactor the steps for a nimbleFunction (which means with setup code)
-    nimbleFunction_track = function(obj, generatorName = NULL) {
+    nimbleFunction_track = function(obj = NULL, generator = NULL, generatorName = NULL) {
+      # when called for a virtual nimbleFunction, there will be no obj, but there will be a generator and generatorName.
       if (is.null(generatorName)) {
         generatorName <- nfGetDefVar(obj, "name")
       }
       if (is.null(NFgens[[generatorName]])) {
         ## nfProc could have been created already during makeTypeObject for another nimbleFunction so it knows the types of this one.
+        if(is.null(generator)) generator <- nf_getGeneratorFunction(obj)
         NFgens[[generatorName]] <<-
           list(
-            nfGenerator = nf_getGeneratorFunction(obj),
+            nfGenerator = generator,
             RinitTypesProcessed = FALSE,
             instances = list(),
             compiled_instances = list(),
@@ -322,9 +336,11 @@ nimbleProjectClass <- R6::R6Class(
           )
       }
       instances <- NFgens[[generatorName]]$instances
-      obj_label <- rlang::env_label(as.environment(obj))
-      if (is.null(instances[[obj_label]])) {
-        NFgens[[generatorName]]$instances[[obj_label]] <<- obj
+      if(!is.null(obj)) { 
+        obj_label <- rlang::env_label(as.environment(obj))
+        if (is.null(instances[[obj_label]])) {
+          NFgens[[generatorName]]$instances[[obj_label]] <<- obj
+        }
       }
       obj
     },
@@ -334,11 +350,17 @@ nimbleProjectClass <- R6::R6Class(
         return(NFgens[[generatorName]]$nfProc)
       }
       if (!length(NFgens[[generatorName]]$instances)) {
-        stop("Requested nimbleFunction_setup_proc for a generator with no instances.", call. = FALSE)
+        isVirtual <- isTRUE(environment(NFgens[[generatorName]]$nfGenerator)$virtual)
+        if(!isVirtual)
+          stop("Requested nimbleFunction_setup_proc for a non-virtual generator with no instances.", call. = FALSE)
+        new_nfProc <-
+          virtualNFprocessing(NFgens[[generatorName]]$nfGenerator, generatorName, project = self)
+      } else {
+        new_nfProc <-
+          nfProcessing(NFgens[[generatorName]]$instances, generatorName, project = self)
       }
-      NFgens[[generatorName]]$nfProc <<-
-        nfProcessing(NFgens[[generatorName]]$instances, generatorName, project = self)
-      NFgens[[generatorName]]$nfProc
+      NFgens[[generatorName]]$nfProc <<- new_nfProc
+      new_nfProc
     },
     nimbleFunction_instantiate = function(generatorName, compiled_generator) {
       instances <- NFgens[[generatorName]]$instances
@@ -450,15 +472,16 @@ nimbleProjectClass <- R6::R6Class(
       # 3. run process to eval new setup code in every instance.
       for(i in seq_along(NFgens)) {
         nfProc <- nimbleFunction_setup_proc(generatorName = names(NFgens)[i])
-        nfProc$updateInstances(NFgens[[i]]$instances)
-        nfProc$process()
+        if(length(NFgens[[i]]$instances))
+          nfProc$updateInstances(NFgens[[i]]$instances)
+        nfProc$process() # Note the process_done flag inside these, which may be set TRUE by recursion.
       }
       invisible(NULL)
     },
     # get_nComp_units collects the nFunction and nClass units to compile via nCompile.
     get_nComp_units = function() {
       nClass_units <- NFgens |>
-        lapply(\(x) x$nfProc$nClassGen) |>
+        lapply(\(x) x$nfProc$NCgenerator) |>
         setNames(names(NFgens))
       model_units <- modelGens |>
         lapply(\(x) x$NCgenerator) |>

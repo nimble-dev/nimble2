@@ -1,3 +1,14 @@
+# virtualNFprocessing is a base class for nfProcessing.
+# It handles everything not involving instances.
+# A nimbleFunctionVirtual is a basic form of base class that,
+# in nimble, is effectively always an abstract base class in that
+# one can't make objects from it. 
+# In nimble2, we follow the use of nimbleFunction and virtualNimbleFunction
+# for purposes of creating nClass generators. Then we call nCompile for 
+# those generators. The base/derived relationships are then re-processed
+# during nCompile. (We can potentially open up more fully-featured inheritance 
+# in nimble2 than in nimble, but at the time of this writing, the goal
+# is backward compatibility.)
 virtualNFprocessing <- setRefClass("virtualNFprocessing",
   fields = list(
     name = "ANY", ## character
@@ -13,7 +24,10 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
     #    RCfunProcs = "ANY", ## list of RCfunProcessing  or RCvirtualFunProcessing objects
     nimbleProject = "ANY", ## nimbleProjectclass object
     cppDef = "ANY", ## cppNimbleFunctionClass or cppVirtualNimbleFunctionClass object
-    nClass_classname = "ANY" ## character
+    nClass_classname = "ANY", ## character
+    NCgenerator = "ANY", # nClass generator (returned from nClass(...))
+    cpp_init_ = "ANY",
+    process_done = "ANY"
   ),
   methods = list(
     show = function() {
@@ -27,6 +41,8 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
     #   compileInfos <<- list()
     matchedCodes <<- list()
     processedCodes <<- list()
+    cpp_init_ <<- NULL
+    process_done <<- FALSE
     #   RCfunProcs <<- list()
 
     # isNode <<- isNode
@@ -110,11 +126,29 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
       }
     },
     process = function(control = list(debug = FALSE, debugCpp = FALSE)) {
-      setupSymTab <<- symbolTable(parentST = NULL)
+      if(process_done) return(invisible(NULL))
+      # setupSymTab <<- symbolTable(parentST = NULL)
+      setupSymTab <<- nCompiler:::symbolTableClass$new()
       addMemberFunctionsToSymbolTable()
+
+      # In the non-virtual case below, we do:
+      # matchKeywords_all()
+      # processKeywords_all()      
+      # Here we short-circuit those and just populate
+      # processedCodes, so that it can be used in build_NCgenerator.
+      # This mimics nimble. In the future, we could do matching
+      # and some keyword processing (when not involved setup outputs and thus instances).
+      # That is a TBD extension beyond original nimble.
+      for(i in seq_along(origMethods)) {
+        processedCodes[[i]] <<- nCompiler::NFinternals(origMethods[[i]])$code
+      }
+      process_done <<- TRUE
+      build_NCgenerator()
       # setupLocalSymbolTables()
       # doRCfunProcess(control)
-    }
+    },
+    build_NCgenerator = function() {NCgenerator <<- build_NCgenerator_impl(.self)},
+    setupTypesForUsingFunction = function() {} # Do-nothing so this can be called generically.
   )
 )
 
@@ -133,9 +167,7 @@ nfProcessing <- setRefClass("nfProcessing",
     instances_newSetupEnvs = "ANY",
     newFields = "ANY",
     keywordCaseIDs = "ANY",
-    newInitCode = "ANY",
-    cpp_init_ = "ANY",
-    nClassGen = "ANY"
+    newInitCode = "ANY"
   ),
   methods = list(
     show = function() {
@@ -190,7 +222,6 @@ nfProcessing <- setRefClass("nfProcessing",
     doSetupTypeInference = function() {},
     # clearSetupOutputs = function() {},
     build_cpp_init_ = function() {},
-    build_nClassGen = function() {},
     # setupLocalSymbolTables = function() {
     #   for (i in seq_along(RCfunProcs)) {
     #     RCfunProcs[[i]]$setupSymbolTables(parentST = setupSymTab, neededTypes = neededTypes, nimbleProject = nimbleProject)
@@ -246,73 +277,25 @@ nfProcessing <- setRefClass("nfProcessing",
       contains <- environment(nfGenerator)$contains
       if (!is.null(contains)) {
         className <- environment(contains)$className
-        nfp <- nimbleProject$setupVirtualNimbleFunction(contains, fromModel = inModel)
-        newSym <- symbolNimbleFunction(name = name, type = "nimbleFunctionVirtual", nfProc = nfp)
-        if (!(className %in% names(neededTypes))) neededTypes[[className]] <<- newSym
+        nfp <- nimbleProject$nimbleFunction_add(generator = contains, fromModel = inModel) # fromModel might be defunct
+#        newSym <- symbolNimbleFunction(name = name, type = "nimbleFunctionVirtual", nfProc = nfp)
+#        if (!(className %in% names(neededTypes))) neededTypes[[className]] <<- newSym
       }
     },
     process = function(control = list(debug = FALSE, debugCpp = FALSE)) {
-      ## Modifications to R code
-      # debug <- control$debug
-      # debugCpp <- control$debugCpp
-      # if (!is.null(getNimbleOption("debugNFProcessing"))) {
-      #   if (getNimbleOption("debugNFProcessing")) {
-      #     debug <- TRUE
-      #     control$debug <- TRUE
-      #     writeLines("Debugging nfProcessing (nimbleOptions('debugRCfunProcessing') is set to TRUE)")
-      #   }
-      # }
-
-      # if (debug) {
-      #   print("setupSymTab")
-      #   print(setupSymTab)
-
-      #   writeLines("***** READY FOR replaceModelSingleValues *****")
-      #   browser()
-      # }
-      #if (inherits(setupSymTab, "uninitializedField")) {
-        ## This step could have already been done if the types were needed by another nimbleFunction
+      if(process_done) return(invisible(NULL))
       setupTypesForUsingFunction()
-      #}
-      # if (debug) browser()
       makeNewSetupLinesOneExpr()
-
       evalNewSetupLines()
-
-      # if (debug) {
-      #   print("setupSymTab")
-      #   print(setupSymTab)
-      #   print("newSetupOutputNames")
-      #   print(newSetupOutputNames)
-      #   print("newSetupCode")
-      #   print(newSetupCode)
-      #   writeLines("***** READY FOR doSetupTypeInference *****")
-      #   browser()
-      # }
       build_cpp_init_()
-
       doSetupTypeInference(setupOrig = FALSE, setupNew = TRUE)
-
-      # if (debug) {
-      #   print("lapply(compileInfos, function(x) print(x$newLocalSymTab))")
-      #   lapply(compileInfos, function(x) print(x$newLocalSymTab))
-      #   writeLines("**** READY FOR RFfunProcessing *****")
-      #   browser()
-      # }
-
       # doRCfunProcess(control)
-
       # collectRCfunNeededTypes()
-
       if (isTRUE(getNimbleOption("enableDerivs"))) {
         collect_nimDerivs_info()
       }
-
-      build_nClassGen()
-      # if (debug) {
-      #   print("done with RCfunProcessing")
-      #
-      # }
+      process_done <<- TRUE
+      build_NCgenerator()
     }
   )
 )
@@ -327,15 +310,27 @@ nfProcessing$methods(build_cpp_init_ = function() {
   cpp_init_ <<- init_
 })
 
-nfProcessing$methods(build_nClassGen = function() {
+build_NCgenerator_impl <- function(.self) {
+  # N.B. By the time we get here, it should be guaranteed from nimbleProject that
+  # all needed types -- specifically an base class -- will have been registered.
+  # Note that R6 and nClass hold "inherits" arguments by expression, but
+  # nimble holds its "contains" argument by value (the actual base class nimbleFunctionVirtual generator)
+  if(missing(.self)) stop(".self is missing in a call to build_NCgenerator_impl")
   new_methods <- list()
+  isVirtual <- nfGetDefVar(.self$nfGenerator, "virtual")
+  anyAbstract <- FALSE
+  origMethods <- .self$origMethods
+  processedCodes <- .self$processedCodes
   for (i in seq_along(origMethods)) {
     thisName <- names(origMethods)[i]
     new_methods[[thisName]] <- origMethods[[i]]
     nCompiler::NFinternals(new_methods[[thisName]]) <- nCompiler::NFinternals(origMethods[[i]])$clone()
     nCompiler::NFinternals(new_methods[[thisName]])$updateCode(processedCodes[[i]])
+    if(isVirtual) {
+      anyAbstract <- anyAbstract || isTRUE(nCompiler::NFinternals(new_methods[[thisName]])$compileInfo$abstract)
+    }
   }
-  members <- setupSymTab$symbols
+  members <- .self$setupSymTab$symbols
   for (mn in names(members)) {
     sym <- members[[mn]]
     if (inherits(sym, "symbolNimbleSpecial")) {
@@ -351,25 +346,45 @@ nfProcessing$methods(build_nClassGen = function() {
       next
     }
   }
-  classname <- nClass_classname
-  initL <- list(cpp_init_ = cpp_init_)
-  nClassGen <<- eval(substitute(
+  compileInfo <- list()
+  if(anyAbstract) {
+    compileInfo <- list(createFromR = FALSE)
+  }
+  classname <- .self$nClass_classname
+  initL <- list()
+  initL$cpp_init_ = .self$cpp_init_ # May be NULL, resulting in no cpp_init_ element.
+  NCenv <- new.env(parent = environment(.self$nfGenerator))
+  if(!is.null(nfGetDefVar(.self$nfGenerator, "contains"))) {
+    contains <- nfGetDefVar(.self$nfGenerator, "contains")
+    contains_generatorName <- environment(contains)$name
+    contains_nfProc <- .self$nimbleProject$nimbleFunction_setup_proc(generatorName = contains_generatorName)
+    contains_nfProc$process() # Will process if not done yet, or just return if already done
+    NCenv$contains_NCgenerator <- contains_nfProc$NCgenerator
+    NFcontains <- quote(contains_NCgenerator)
+  } else {
+    NFcontains <- NULL
+  }
+  fields <- if(isVirtual) list() else .self$newFields
+  NCgenerator <- eval(substitute(
     nCompiler::nClass(
       classname = CLASSNAME,
+      inherit = NFCONTAINS,
       Cpublic = c(
         MEMBERS,
         METHODS
       ),
-      env = environment(nfGenerator)
+      env = NCenv,
+      compileInfo = compileInfo
     ),
     list(
-      MEMBERS = c(members, .self$newFields),
+      NFCONTAINS = NFcontains,
+      MEMBERS = c(members, fields),
       METHODS = c(new_methods, initL),
       CLASSNAME = classname
     )
   ))
-  nClassGen
-})
+  NCgenerator
+}
 
 nfProcessing$methods(evalNewSetupLines = function() {
   if (length(instances) == 0) {
