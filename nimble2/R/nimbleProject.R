@@ -195,6 +195,36 @@ nimbleProjectClass <- R6::R6Class(
         nCompiler::value(compiled_instances[[i]]) <- instances[[i]]
       }
     },
+    #########################
+    ## nimbleFunctionLists ##
+    #########################
+    nimbleFunctionList_add_multi = function(objList,
+                                            control = list()) {
+      if (!is.list(objList)) {
+        stop("objList in nimbleFunctionList_add_multi should be a list", call. = FALSE)
+      }
+      # Each element in objList will be a nimbleFunctionList.
+      allBaseClasses <- lapply(objList, \(x) x$baseClass)
+      uniqueBaseClasses <- unique(allBaseClasses)
+      if(length(uniqueBaseClasses) != 1) {
+        stop("All nimbleFunctionLists in objList must have the same baseClass.", call. = FALSE)
+      }
+      # nimbleFunctionLists are not stand-alone objects, and they are never shared,
+      # so we don't need to track them for instantiation and population later.
+      # But we do need to track their contents and base class. The contents can't change after calling
+      # compileNimble (arriving here), so we can assume they are static here.
+      nimbleFunction_add_multi(unlist(lapply(objList, \(x) x$contentsList), recursive = FALSE), control = control)
+      # The base class in nimble is required to be a nimbleFunctionVirtual, which we add
+      # as any other nimbleFunction except by generatorName, since we don't have an object in hand.
+      base_nfProc <- nimbleFunction_add(generator = uniqueBaseClasses[[1]])
+      base_nfProc # This will be held in the symbolNimbleFunctionList.
+    },
+    nimbleFunctionList_get_compiled_internal = function(obj) {
+      # This is called when instantiating a nimbleFunction that may need the compiled nimbleFunctionList object.
+      contents <- obj$contentsList
+      contents_compiled <- lapply(contents, \(x) nimbleFunction_get_compiled_internal(x))
+      contents_compiled
+    },
     #####################
     ## nimbleFunctions ##
     #####################
@@ -393,11 +423,13 @@ nimbleProjectClass <- R6::R6Class(
       isModel <- setupOutputSymbolClasses == "symbolModel"
       isModelValues <- setupOutputSymbolClasses == "symbolModelValues"
       isNF <- setupOutputSymbolClasses == "symbolNimbleFunction"
-      isBasic <- !(isModel | isModelValues | isNF)
+      isNFL <- setupOutputSymbolClasses == "symbolNimbleFunctionList"
+      isBasic <- !(isModel | isModelValues | isNF | isNFL)
       setupOutputNames_basic <- setupOutputNames[isBasic]
       setupOutputNames_models <- setupOutputNames[isModel]
       setupOutputNames_modelValues <- setupOutputNames[isModelValues]
       setupOutputNames_NFs <- setupOutputNames[isNF]
+      setupOutputNames_NFLs <- setupOutputNames[isNFL]
       
       # new setup outputs can't ever be nimbleFunctions or ...
       newSetupOutputSymbolClasses <- newSetupOutputNames |>
@@ -433,6 +465,13 @@ nimbleProjectClass <- R6::R6Class(
             setupOutputList,
             setupOutputNames_NFs |> lapply(\(x) nimbleFunction_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_NFs)
           )
+        # 5. nimbleFunctionLists
+        if(length(setupOutputNames_NFLs)) {
+          setupOutputList <- c(
+            setupOutputList,
+            setupOutputNames_NFLs |> lapply(\(x) nimbleFunctionList_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_NFLs)
+          )
+        }
         # new setup outputs:
         inst_newSetupEnv <- NFgens[[generatorName]]$nfProc$instances_newSetupEnvs[[i]]
         if(length(newSetupOutputNames_basic))

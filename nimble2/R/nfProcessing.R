@@ -353,7 +353,7 @@ build_NCgenerator_impl <- function(.self) {
   classname <- .self$nClass_classname
   initL <- list()
   initL$cpp_init_ = .self$cpp_init_ # May be NULL, resulting in no cpp_init_ element.
-  NCenv <- new.env(parent = environment(.self$nfGenerator))
+  NCenv <- new.env(parent = environment(.self$nfGenerator)) # This allows RCfunctions (here nFunctions) to be found naturally.
   if(!is.null(nfGetDefVar(.self$nfGenerator, "contains"))) {
     contains <- nfGetDefVar(.self$nfGenerator, "contains")
     contains_generatorName <- environment(contains)$name
@@ -613,32 +613,36 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
   # if (inherits(instances[[1]][[name]], "indexedNodeInfoTableClass")) {
   #   return(symbolIndexedNodeInfoTable(name = name, type = "symbolIndexedNodeInfoTable")) ## the class type will get it copied but the Ronly will make it skip a type declaration, which is good since it is in the nodeFun base class.
   # }
-  # if (inherits(instances[[1]][[name]], "nimbleFunctionList")) {
-  #   .self$neededObjectNames <- c(.self$neededObjectNames, name)
-  #   baseClass <- instances[[1]][[name]]$baseClass ## an nfGenerator created by virtualNimbleFunction()
-  #   baseClassName <- environment(baseClass)$className
+  if (inherits(first_inst, "nimbleFunctionList")) {
+    NimFunList_list <- lapply(instances_to_use, `[[`, name)
+    base_nfProc <- .self$nimbleProject$nimbleFunctionList_add_multi(NimFunList_list)
+    newSym <- symbolNimbleFunctionList$new(name = name, base_nfProc = base_nfProc)
+    return(newSym)
+    # .self$neededObjectNames <- c(.self$neededObjectNames, name)
+    # baseClass <- instances[[1]][[name]]$baseClass ## an nfGenerator created by virtualNimbleFunction()
+    # baseClassName <- environment(baseClass)$className
 
-  #   if (!(baseClassName %in% names(.self$neededTypes))) {
-  #     nfp <- .self$nimbleProject$setupVirtualNimbleFunction(baseClass, fromModel = .self$inModel)
-  #     newSym <- symbolNimbleFunctionList(name = name, type = "nimbleFunctionList", baseClass = baseClass, nfProc = nfp)
-  #     neededTypeSim <- symbolNimbleFunction(name = baseClassName, type = "virtualNimbleFunction", nfProc = nfp)
-  #     .self$neededTypes[[baseClassName]] <- newSym
-  #   } else {
-  #     newSym <- .self$neededTypes[[baseClassName]]
-  #   }
+    # if (!(baseClassName %in% names(.self$neededTypes))) {
+    #   nfp <- .self$nimbleProject$setupVirtualNimbleFunction(baseClass, fromModel = .self$inModel)
+    #   newSym <- symbolNimbleFunctionList(name = name, type = "nimbleFunctionList", baseClass = baseClass, nfProc = nfp)
+    #   neededTypeSim <- symbolNimbleFunction(name = baseClassName, type = "virtualNimbleFunction", nfProc = nfp)
+    #   .self$neededTypes[[baseClassName]] <- newSym
+    # } else {
+    #   newSym <- .self$neededTypes[[baseClassName]]
+    # }
 
-  #   allInstances <- unlist(lapply(instances, function(x) x[[name]]$contentsList), recursive = FALSE)
-  #   newNFprocs <- .self$nimbleProject$compileNimbleFunctionMulti(allInstances, initialTypeInference = TRUE)
-  #   ## only types are needed here, not initialTypeInference, because nfVar's from a nimbleFunctionList are not available (could be in future)
-  #   for (nfp in newNFprocs) {
-  #     newTypeName <- environment(nfp$nfGenerator)$name
-  #     .self$neededTypes[[newTypeName]] <- symbolNimbleFunction(
-  #       name = newTypeName, type = "nimbleFunction",
-  #       nfProc = nfp
-  #     )
-  #   }
-  #   return(newSym)
-  # }
+    # allInstances <- unlist(lapply(instances, function(x) x[[name]]$contentsList), recursive = FALSE)
+    # newNFprocs <- .self$nimbleProject$compileNimbleFunctionMulti(allInstances, initialTypeInference = TRUE)
+    # ## only types are needed here, not initialTypeInference, because nfVar's from a nimbleFunctionList are not available (could be in future)
+    # for (nfp in newNFprocs) {
+    #   newTypeName <- environment(nfp$nfGenerator)$name
+    #   .self$neededTypes[[newTypeName]] <- symbolNimbleFunction(
+    #     name = newTypeName, type = "nimbleFunction",
+    #     nfProc = nfp
+    #   )
+    # }
+    # return(newSym)
+  }
   if (is.nf(first_inst)) { ## nimbleFunction
     funList <- lapply(instances_to_use, `[[`, name)
     nfp <- .self$nimbleProject$nimbleFunction_add_multi(funList) ## will return existing nfProc if it exists

@@ -63,8 +63,10 @@ symbolNimbleFunction <-
         initialize = function(nfProc, ...) {
           super$initialize(...)
           self$type <- nfGetDefVar(nfProc$nfGenerator, "name")
-          self$nfProc = nfProc
+          self$nfProc <- nfProc
         },
+        # build_NCgenerator_impl simply uses this symbol as the nClass declaration type.
+        # During nCompile, the resolveSym method is called to self-replace.
         resolveSym = function(...) {
           # When the symbol is initialized, not all nfProcs will have their
           # nClass generators built. But by the time resolveSym is called (during nCompile), they should.
@@ -86,12 +88,42 @@ symbolNimbleFunction <-
       )
   )
 
+symbolNimbleFunctionList <- 
+  R6::R6Class(
+    classname = "symbolNimbleFunctionList",
+    inherit = nCompiler:::symbolBase,
+    public =
+      list(
+        base_nfProc = NULL,
+        initialize = function(base_nfProc, ...) {
+          super$initialize(...)
+          self$type <- "nimbleFunctionList"
+          self$base_nfProc <- base_nfProc
+        },
+        resolveSym = function(...) {
+          base_NCgen <- self$base_nfProc$NCgenerator
+          res <- nCompiler:::type2symbol(nCompiler::nList(base_NCgen()),
+                                         name = self$name,
+                                         isArg = self$isArg)
+          res <- res$resolveSym(...)
+          return(res)
+        },
+        print = function() writeLines(paste("symbolNimbleFunctionList", self$name)),
+        genCppVar = function(...) {
+          stop(paste("Error, you should not be generating a cppVar for symbolNimbleFunctionList", self$name))
+        }
+      )
+  )
+
 symbolInstrList <- 
   R6::R6Class(
     classname = "symbolInstrList",
     inherit = nCompiler:::symbolBase,
     public =
       list(
+        # In this case, resolveSym won't do because we want to see the nList as a declaration.
+        # build_nCgenerator_impl checks any symbols in the nimbleFunction symbolTable and
+        # replaced with any declaration fields like the following:
         declaration = "nCompiler::nList(nimbleModel:::instr_nClass())",
         initialize = function(...) {
           super$initialize(

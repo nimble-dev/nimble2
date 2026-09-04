@@ -945,11 +945,12 @@ dollarSign_keywordInfo <- keywordInfoClass(
     #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
     #   return(newRunCode)
     # }
-    # if (class == "symbolNimbleFunctionList") {
+    if (class == "symbolNimbleFunctionList") {
     #   nf_fieldName <- as.character(code[[3]])
     #   newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
     #   return(newRunCode)
-    # }
+      return(code)
+    }
     if (class == "symbolModel") {
       singleAccess_ArgList <-
         list(code = code, model = callerCode, var = as.character(code[[3]]))
@@ -2370,8 +2371,8 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
     return(matchAndFill.call(thisFunctionMatch, code))
   }
   if (inherits(symObj, "symbolNimbleFunctionList")) {
-    thisBaseClass <- symObj$baseClass
-    thisFunctionMatch <- environment(symObj$baseClass)$methodList[[memFunName]]$template
+    thisFunctionMatch <- 
+      nCompiler::NFinternals(symObj$base_nfProc$origMethods[[memFunName]])$default_matchDef
     return(matchAndFill.call(thisFunctionMatch, code))
   }
   stop(paste0("Cannot handle this expression: ", deparse(code)))
