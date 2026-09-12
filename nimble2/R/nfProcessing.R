@@ -27,16 +27,15 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
     nClass_classname = "ANY", ## character
     NCgenerator = "ANY", # nClass generator (returned from nClass(...))
     cpp_init_ = "ANY",
-    process_done = "ANY"
+    process_done = "ANY",
+    NCenv = "ANY"
   ),
   methods = list(
     show = function() {
       writeLines(paste0("virtualNFprocessing object ", name))
     },
-    initialize = function(f = NULL, className, virtual = TRUE, project = NULL) {{
-      force(f) # avoid warnings from recursive promise evaluation during debugging
-      #      browser()
-    }
+    initialize = function(f = NULL, className, virtual = TRUE, project = NULL) {
+    # {force(f)} # avoid warnings from recursive promise evaluation during debugging
     nimbleProject <<- project
     #   compileInfos <<- list()
     matchedCodes <<- list()
@@ -57,6 +56,8 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
         }
         nfGenerator <<- nf_getGeneratorFunction(f[[1]])
       }
+      NCenv <<- new.env(parent = environment(nfGenerator)) # This is the env for the NCgenerator, so that RCfunctions (here nFunctions) and nimbleListDefs can be found by natural scoping.
+
       if (missing(className)) {
         sf <- environment(nfGenerator)$name
         name <<- nCompiler::Rname2CppName(sf)
@@ -64,7 +65,20 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
         name <<- className
       }
       nClass_classname <<- paste0(nfGetDefVar(.self$nfGenerator, "name"), "_nClass")
-      origMethods <<- nf_getMethodList(nfGenerator)
+      # We must build new copies of the methods here for purposes of type declaration
+      # scoping (for environments captured in quosures). See note in nimbleFunction.
+      updatedOrigMethodList <- getFunctionEnvVar(nfGenerator, "updatedOrigMethodList")
+      buildDerivsList <- getFunctionEnvVar(nfGenerator, "buildDerivsList")
+      origMethods <<- list()
+      for(iM in seq_along(updatedOrigMethodList)) {
+        origMethods[[iM]] <<- RCfunction(updatedOrigMethodList[[iM]],
+          # name ?
+          buildDerivs = buildDerivsList[[iM]],
+          where = NCenv
+        )
+      }
+      names(origMethods) <<- names(updatedOrigMethodList)
+      #origMethods <<- nf_getMethodList(nfGenerator)
       origMethodNames <- names(origMethods)
       origSetupOutputNames <<- nf_getSetupOutputNames(nfGenerator)
       updatedSetupOutputNames <<- origSetupOutputNames
@@ -353,14 +367,13 @@ build_NCgenerator_impl <- function(.self) {
   classname <- .self$nClass_classname
   initL <- list()
   initL$cpp_init_ = .self$cpp_init_ # May be NULL, resulting in no cpp_init_ element.
-  NCenv <- new.env(parent = environment(.self$nfGenerator)) # This allows RCfunctions (here nFunctions) to be found naturally.
   if(!is.null(nfGetDefVar(.self$nfGenerator, "contains"))) {
     contains <- nfGetDefVar(.self$nfGenerator, "contains")
     contains_generatorName <- environment(contains)$name
     contains_nfProc <- .self$nimbleProject$nimbleFunction_setup_proc(generatorName = contains_generatorName)
     contains_nfProc$process() # Will process if not done yet, or just return if already done
-    NCenv$contains_NCgenerator <- contains_nfProc$NCgenerator
-    NFcontains <- quote(contains_NCgenerator)
+    .self$NCenv$contains_NCgenerator_ <- contains_nfProc$NCgenerator
+    NFcontains <- quote(contains_NCgenerator_)
   } else {
     NFcontains <- NULL
   }
@@ -373,7 +386,7 @@ build_NCgenerator_impl <- function(.self) {
         MEMBERS,
         METHODS
       ),
-      env = NCenv,
+      env = .self$NCenv,
       compileInfo = compileInfo
     ),
     list(
@@ -569,47 +582,36 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
     instances_to_use <- .self$instances_newSetupEnvs
   }
   first_inst <- instances_to_use[[1]][[name]]
-  # isNLG <- FALSE
-  # if (is.nlGenerator(instances[[1]][[name]])) {
-  #   nlGen <- instances[[1]][[name]]
-  #   isNLG <- TRUE
-  # } else if (exists(name, envir = globalenv())) {
-  #   foundObject <- get(name, envir = globalenv())
-  #   if (is.nlGenerator(foundObject)) {
-  #     nlGen <- foundObject
-  #     isNLG <- TRUE
-  #   }
-  # }
-  # if (isNLG) {
-  #   nlp <- .self$nimbleProject$compileNimbleList(nlGen, initialTypeInferenceOnly = TRUE)
-  #   className <- nl.getListDef(nlGen)$className
-  #   newSym <- symbolNimbleList(name = name, nlProc = nlp)
-  #   .self$neededTypes[[className]] <- newSym ## if returnType is a NLG, this will ensure that it can be found in argType2symbol()
-  #   returnSym <- symbolNimbleListGenerator(name = name, nlProc = nlp)
-  #   return(returnSym)
-  # }
-  # if (is.nl(instances[[1]][[name]])) {
-  #   ## This case mimics the nimbleFunction case below (see is.nf)
-
-  #   ## We need all instances created in setup code from all instances
-  #   nlList <- lapply(instances, `[[`, name)
-  #   ## trigger initial procesing to set up an nlProc object
-  #   ## that will have a symbol table.
-  #   ## Issue: We may also need to trigger this step from run code
-  #   nlp <- .self$nimbleProject$compileNimbleList(nlList, initialTypeInferenceOnly = TRUE)
-  #   ## get the unique name that we use to generate a unique C++ definition
-  #   className <- nlList[[1]]$nimbleListDef$className
-  #   ## add the setupOutput name to objects that we need to instantiate and point to
-  #   .self$neededObjectNames <- c(.self$neededObjectNames, name)
-
-  #   ## create a symbol table object
-  #   newSym <- symbolNimbleList(name = name, nlProc = nlp)
-
-  #   ## If this is the first time this type is encountered,
-  #   ## add it to the list of types whose C++ definitions will need to be generated
-  #   if (!(className %in% names(.self$neededTypes))) .self$neededTypes[[className]] <- newSym
-  #   return(newSym)
-  # }
+  # It is not totally clear if we need to track nimbleList generators.
+  # Since they are implemented as nClass generators, they might "just work."
+  isNLG <- FALSE
+  if (is.nlGenerator(first_inst)) {
+    nlGen <- first_inst
+    isNLG <- TRUE
+  } else if (exists(name, envir = globalenv())) {
+    foundObject <- get(name, envir = globalenv())
+    if (is.nlGenerator(foundObject)) {
+      nlGen <- foundObject
+      isNLG <- TRUE
+    }
+  }
+  if (isNLG) {
+    .self$nimbleProject$nimbleList_add(generator = nlGen)
+    .self$NCenv[[name]] <- nlGen
+    # className <- nl.getListDef(nlGen)$className
+    # newSym <- symbolNimbleList(name = name, nlProc = nlp)
+    # .self$neededTypes[[className]] <- newSym ## if returnType is a NLG, this will ensure that it can be found in argType2symbol()
+    returnSym <- symbolNimbleListGenerator$new(name = name, NCgenerator = nlGen)
+    return(returnSym)
+  }
+  if (inherits(first_inst, "nimbleList")) {
+    ## This case mimics the nimbleFunction case below (see is.nf)
+    ## We need all instances created in setup code from all instances
+    nlList <- lapply(instances_to_use, `[[`, name)
+    NCgen <- .self$nimbleProject$nimbleList_add_set(nlList)
+    newSym <- symbolNimbleList$new(name = name, NCgenerator = NCgen)
+    return(newSym)
+  }
   # if (inherits(instances[[1]][[name]], "indexedNodeInfoTableClass")) {
   #   return(symbolIndexedNodeInfoTable(name = name, type = "symbolIndexedNodeInfoTable")) ## the class type will get it copied but the Ronly will make it skip a type declaration, which is good since it is in the nodeFun base class.
   # }

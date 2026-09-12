@@ -52,6 +52,58 @@ symbolMemberFunction <-
       )
   )
 
+# I think this is mostly used as a tag during processing
+# symbolNimbleSpecial means it does not propagate to C++
+symbolNimbleListGenerator <- 
+  R6::R6Class(
+    classname = "symbolNimbleListGenerator",
+    inherit = symbolNimbleSpecial,
+    public =
+      list(
+        NCgenerator = NULL,
+        initialize = function(NCgenerator, ...) {
+          super$initialize(...)
+          self$type <- "nimbleListGenerator"
+          self$NCgenerator <- NCgenerator
+        },
+        print = function() writeLines(paste("symbolNimbleListGenerator", self$name)),
+        genCppVar = function(...) {
+          stop(paste("Error, you should not be generating a cppVar for symbolNimbleListGenerator", self$name))
+        }
+      )
+  )
+  
+symbolNimbleList <- 
+  R6::R6Class(
+    classname = "symbolNimbleList",
+    inherit = nCompiler:::symbolBase,
+    public =
+      list(
+        NCgenerator = NULL,
+        initialize = function(NCgenerator, ...) {
+          super$initialize(...)
+          self$type <- "nimbleList"
+          self$NCgenerator <- NCgenerator
+        },
+        resolveSym = function(...) {
+          nCgen <- self$NCgenerator
+          if (is.null(nCgen)) {
+            stop("While resolving symbol in symbolNimbleList: NCgenerator is NULL")
+          }
+          nCompiler:::symbolNC$new(
+            name = self$name,
+            isArg = self$isArg, # should always be FALSE because nimble does not support passing nimbleFunctions as args.
+            type = nCompiler:::NCinternals(nCgen)$cpp_classname, # consistent with nCompiler:::symbolTBD$resolveSym.
+            NCgenerator = nCgen
+          )
+        },
+        print = function() writeLines(paste("symbolNimbleList", self$name)),
+        genCppVar = function(...) {
+          stop(paste("Error, you should not be generating a cppVar for symbolNimbleList", self$name))
+        }
+      )
+  )
+
 symbolNimbleFunction <-
   R6::R6Class(
     classname = "symbolNimbleFunction",

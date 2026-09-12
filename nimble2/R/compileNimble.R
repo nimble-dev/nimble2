@@ -51,6 +51,93 @@ getOrSetValues_LAT <- function(code, symTab, auxEnv, info) {
   nimble2:::getOrSetValues_LAT_impl(code, symTab, auxEnv, info)
 }
 
+newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
+  # This does some major AST engineering
+  # We enter with makeNewNimbleList( listDef) 
+  browser()
+  # 1. Recurse on the listDef and make symbols
+  LATenv <- nCompiler:::labelAbstractTypesEnv
+  inserts <- LATenv$recurse_labelAbstractTypes(code, symTab, auxEnv,
+                                        handlingInfo,
+                                        useArgs = c(TRUE, FALSE))
+  generatorName <- code$args[[1]]$name
+  NCgen <- code$args[[1]]$type$NCgenerator
+  classname <- nCompiler::NCinternals(NCgen)$cpp_classname
+  
+  NC_info <- nCompiler:::register_known_nClass(NCgen, project_env = auxEnv$project_env)
+
+  returnSym <- nCompiler:::symbolNC$new(name = '',
+                            type = code$args[[1]]$type$name,
+                            isArg = FALSE,
+                            overloadDefs = NC_info$inheritInfo$overloadDefs,
+                            NCgenerator = NCgen)
+  
+  newSym <- nCompiler:::symbolNF$new(name = classname,
+                          returnSym = returnSym)
+  # 2. Change to chainedCall(construct_new_nClass( listDef))
+  code$name <- 'construct_new_nClass'
+  code$type <- newSym
+  # The careful way to extract args, removing them from the AST
+  setterArgs <- list()
+  if(length(code$args) > 1) {
+    numSetterLines <- length(code$args) - 1
+    setterVarNames <- names(code$args)[-1]
+    setterArgs <- vector("list", length = numSetterLines)
+     for(i in length(code$args):2) {
+      setterArgs[[i-1]] <- nCompiler:::removeArg(code, i)
+    }
+  }
+  
+  newCode <- nCompiler:::wrapExprClassOperator(code, "chainedCall")
+  # now newCode is in the AST where code was
+  newCode$type <- returnSym
+  browser()
+  
+  # 3. Build a lambda function
+  lambdaCodeOp <- nCompiler:::nParse(quote(chainedCall(LambdaFun_(decl, def))))
+  #.   Place it in the AST in place of chainedCall(construct_new_nClass( listDef))
+  nCompiler:::replaceArgInCaller(newCode, lambdaCodeOp)
+  lambdaCodeOp$type <- returnSym
+
+  # Set the decl argument to a lambda function opening string
+  lambdaCode <- lambdaCodeOp$args[[1]]
+  lambdaDecl <- nCompiler:::nParse(as.name(paste0('[&]()')))
+  nCompiler:::setArg(lambdaCode, 1, lambdaDecl)
+  
+  tempName <- quote(ans)
+  # Set the body to create the new object, using the
+  #. chainedCall(construct_new_nClass( listDef)) piece from above
+  lambdaBody <- nCompiler:::nParse(substitute({TEMP <- dummy; return(TEMP)}, 
+                                              list(TEMP = tempName)))
+ # lambdaBody <- nCompiler:::nParse(quote(return(dummy)))
+  nCompiler:::setArg(lambdaBody$args[[1]], 2, newCode)
+  # Add additional lines for any setting:
+  if(numSetterLines) {
+    for(i in 1:numSetterLines) {
+      newLine <- substitute(TEMP$V <- value, 
+                            list(TEMP = tempName, V = as.name(setterVarNames[i])))
+      newLine <- nCompiler:::nParse(newLine)
+      nCompiler:::setArg(newLine, 2, setterArgs[[i]])
+      nCompiler:::insertArg(lambdaBody, 2, newLine)
+    }
+  }
+  
+  # process the body
+  inserts <- nCompiler:::compile_labelAbstractTypes(lambdaBody, symTab, auxEnv)
+  # put the body in place in the lambda fun call.
+  nCompiler:::setArg(lambdaCode, 2, lambdaBody)
+  
+  if(length(inserts)) return(inserts) else return(NULL)
+  
+  NULL
+}
+
+newNimbleList_CPP <- function(code, symTab) {
+  browser()
+
+  NULL
+}
+
 nimble_nCompiler_opDefs <- list(
   nimRound = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "round")),
   nimNumeric = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "nNumeric")),
@@ -74,7 +161,12 @@ nimble_nCompiler_opDefs <- list(
     matchDef = function(from, fromRow, to, toRow) {},
     labelAbstractTypes = list(handler = "custom_call",
                               recurse = TRUE,
-                              returnType = nCompiler:::symbolVoid$new()))
+                              returnType = nCompiler:::symbolVoid$new())),
+  makeNewNimbleListObject = list(
+    matchDef = function(.LEFTSIDE, ...) {},
+    labelAbstractTypes = list(handler = "newNimbleList_LAT"),
+    cppOutput = list(handler = "newNimbleList_CPP")
+  )
 )
 
 #' @importFrom nCompiler registerOpDef deregisterOpDef
@@ -216,6 +308,18 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
     for (i in whichUnits) if (names(units)[i] != "") names(ans)[i] <- names(units)[i]
   }
 
+  nlUnits <- unitTypes == 'nl'
+  if(sum(nlUnits) > 0) {
+    # In nimble it superficially looks like nimbleLists are supported as
+    # objects for compilation, but actually that was never fully built out
+    # and results in an error.
+    stop("nimbleList objects are not supported for direct compilation. They are supported if created in setup code of nimbleFunctions.")
+    # whichUnits <- which(nlUnits)
+    # for (i in whichUnits) {
+    #   ans[[i]] <- project$nimbleList_add(units[[i]], control = control)
+    #   if (names(units)[i] != "") names(ans)[i] <- names(units)[i]
+    # }  
+  }
   # From here we are ready to:
   # Have the project create the nfProcs
   # Collect compilation units
@@ -247,7 +351,7 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
     }
   }
 
-  project$instantiate(nCompile_results)
+  project$instantiate_and_populate(nCompile_results)
 
   if (sum(modelUnits) > 0) {
     whichUnits <- which(modelUnits)
@@ -260,6 +364,10 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
     whichUnits <- which(nfUnits)
     compiled_units[whichUnits] <- project$nimbleFunction_getResults(units[whichUnits])
   }
+
+  # No need to check for nlUnits because they are not really supported
+  # as compileNimble inputs.
+
   names(compiled_units) <- names(units)
   if (length(compiled_units) == 1) compiled_units[[1]] else compiled_units
 }

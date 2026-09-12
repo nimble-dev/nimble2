@@ -139,6 +139,19 @@ nimbleFunction <- function(setup = NULL,
   origMethodList <- methodList
   methodList <- list()
   setupVarNames <- c(all.vars(body(setup)), names(formals(setup)))
+  # We retain the following two lists so that nfProcessing
+  # can construct its own copies of the RCfunctions.
+  # This is necessary for scoping purposes, especially for the
+  # nimbleList case that a nimbleListDef is created in setup code
+  # and used as a type declaration. In that case, the environment
+  # captured in the quosure for those declarations when we create
+  # the RCfunction (nFunction) here will not see the needed
+  # nimbleListDef (nClass). When nfProcessing works to create
+  # an nClass from the nimbleFunction, it will have an environment
+  # for those, since it will be working from realized instances.
+  # It's a minor case but it occurs and has to be supported.
+  updatedOrigMethodList <- list()
+  buildDerivsList <- list()
 
   for (iM in seq_along(origMethodList)) {
     thisBuildDerivs <- FALSE
@@ -154,12 +167,16 @@ nimbleFunction <- function(setup = NULL,
       buildDerivs = thisBuildDerivs,
       where = where
     )
+    updatedOrigMethodList[[iM]] <- updatedMethod
+    buildDerivsList[[iM]] <- thisBuildDerivs
     methodList[[iM]] <- RCfunction(updatedMethod,
       # name ?
       buildDerivs = thisBuildDerivs,
       where = where
     )
   }
+  names(updatedOrigMethodList) <- names(origMethodList)
+  names(buildDerivsList) <- names(origMethodList)
   names(methodList) <- names(origMethodList)
   NCcompileInfo <- list()
 
@@ -218,10 +235,11 @@ nimbleFunction <- function(setup = NULL,
 
   for (var in c(
     "generatorFunction", "nfRefClassDef", "nfRefClass",
-    "setup", "run", "methods", "methodList", "name", "className", "contains",
+    "setup", "run", "methods", "methodList", "updatedOrigMethodList", "buildDerivsList",
+    "name", "className", "contains",
     "buildDerivs", "virtual", ".globalSetupEnv", ".namesToCopy",
     ".namesToCopyFromGlobalSetup", ".namesToCopyFromSetup",
-    "declaredSetupOutputNames", ".globalSetupEnv", "methodControl"
+    "declaredSetupOutputNames", "methodControl"
   )) {
     GFenv[[var]] <- get(var)
   }

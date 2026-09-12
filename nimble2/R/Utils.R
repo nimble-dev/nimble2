@@ -69,8 +69,11 @@ setNimType <- function(x, value) {
   x
 }
 
-# This is a placeholder needed by nf_checkDSLcode
-# until we implement the nimble2 version of nimbleList.
-is.nlGenerator <- function(...) {
-  FALSE
+is.nlGenerator <- function(x, inputIsName = FALSE, where = -1) {
+  if (inputIsName) {
+    x <- get(x, pos = where)
+  }
+  if(!nCompiler:::isNCgenerator(x)) return(FALSE)
+  if(!grepl("nimbleListBase_nClass", deparse(x$inherit))) return(FALSE)
+  TRUE
 }

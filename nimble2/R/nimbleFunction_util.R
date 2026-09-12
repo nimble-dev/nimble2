@@ -97,15 +97,15 @@ nf_getInstances <- function(f) {
   stop("invalid nimbleFunction argument\n")
 }
 
-nf_getMethodList <- function(f) {
-  if (is.nfGenerator(f)) {
-    return(getFunctionEnvVar(f, "methodList"))
-  }
-  if (is.nf(f)) {
-    return(getFunctionEnvVar(nf_getGeneratorFunction(f), "methodList"))
-  }
-  stop("invalid nimbleFunction argument\n")
-}
+# nf_getMethodList <- function(f) {
+#   if (is.nfGenerator(f)) {
+#     return(getFunctionEnvVar(f, "methodList"))
+#   }
+#   if (is.nf(f)) {
+#     return(getFunctionEnvVar(nf_getGeneratorFunction(f), "methodList"))
+#   }
+#   stop("invalid nimbleFunction argument\n")
+# }
 
 nf_getSetupOutputNames <- function(f, hidden = FALSE) {
   nameFunction <- if (hidden) function(x) x else nf_namesNotHidden
