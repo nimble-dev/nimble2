@@ -833,7 +833,7 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
     } else {
       instanceObjs <- lapply(instances_to_use, `[[`, name)
       types <- unlist(lapply(instanceObjs, storage.mode))
-      dims <- lapply(instanceObjs, \(x) if (is.null(dim(x))) length(x) else dim(x)) |> unlist()
+      dims <- lapply(instanceObjs, \(x) if (is.null(dim(x))) length(x) else dim(x))
 #      dimsNULL <- unlist(lapply(dims, is.null))
       declared_types <- lapply(instanceObjs, function(x) attr(x, "nimble_type"))
       bool_declared_types <- unlist(lapply(declared_types, function(x) !is.null(x)))

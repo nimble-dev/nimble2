@@ -9,6 +9,11 @@ nimbleListBase_nClass <- nCompiler:::nClass(
   Rpublic = list(
     initialize = function(...) {
       super$initialize(...)
+      if(!self$isCompiled()) {
+        valueList <- list(...)
+        for(vn in names(valueList))
+          self[[vn]] <- valueList[[vn]]
+      }
       self$dummy_ <- 0
     })
 )
@@ -193,7 +198,12 @@ make_nimbleList_nClass <- function(types,
       }
     } 
   }
-  CpublicVars <- paste0("numericArray(nDim=", types$dims, ")") |> as.list()
+  CpublicVars <- character(length(types$vars))
+  isCharacter <- types$types == "character"
+  CpublicVars[isCharacter] <- paste0("character()")
+  CpublicVars[!isCharacter] <- paste0("nArray(nDim=", types$dims[!isCharacter], ", type='", types$types[!isCharacter], "')")
+  CpublicVars <- as.list(CpublicVars)
+  # CpublicVars <- paste0("numericArray(nDim=", types$dims, ")") |> as.list()
   names(CpublicVars) <- types$vars
   
   classname <- name
@@ -249,3 +259,49 @@ makeNimbleListTemplateWithBlankFirstArg <- function(nlDef) {
 nl.getListDef <- function(nlGen) {
   nlGen$public_fields$nimbleListDef
 }
+
+is.nl <- function(obj) {
+  inherits(obj, "nimbleList")
+}
+
+#' create a nimbleType object
+#'
+#' Create a nimbleType object, with information on the name, type, and dimension of an object to be placed in a \code{\link{nimbleList}}.
+#'
+#' @param name The name of the object, given as a character string.
+#' @param type The type of the object, given as a character string.
+#' @param dim  The dimension of the object, given as an integer.  This can be left blank if the object is a nimbleList.
+#'
+#' @author NIMBLE development team
+#'
+#' @export
+#'
+#' @details
+#' 
+#' This function creates \code{nimbleType} objects, which can be used to define the elements of a \code{\link{nimbleList}}.  
+#' 
+#' The \code{type} argument can be chosen from among \code{character}, \code{double}, \code{integer}, and \code{logical},
+#' or can be the name of a previously created \code{\link{nimbleList} definition}.
+#' 
+#' See the NIMBLE \href{https://r-nimble.org/manual/cha-welcome-nimble.html}{User Manual} for additional examples.
+#' 
+#' @examples 
+#' nimbleTypeList <- list()
+#' nimbleTypeList[[1]] <- nimbleType(name = 'x', type = 'integer', dim = 0)
+#' nimbleTypeList[[2]] <- nimbleType(name = 'Y', type = 'double', dim = 2)
+#'
+nimbleType <- setRefClass(
+  Class = 'nimbleType',
+  fields = c('name', 'type', 'dim'),
+  methods = list(
+    initialize = function(name, type, dim = NA){
+      name <<- name
+      type <<- type
+      dim <<- dim
+    },
+    show = function(){
+      cat("nimbleType object with name ", name, ", type ", type, ", dim ",
+          dim,"\n", sep = "")
+    }
+  )
+)

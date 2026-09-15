@@ -54,12 +54,14 @@ getOrSetValues_LAT <- function(code, symTab, auxEnv, info) {
 newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
   # This does some major AST engineering
   # We enter with makeNewNimbleList( listDef) 
-  browser()
   # 1. Recurse on the listDef and make symbols
+  if(length(code$args) < 1) stop("Problem with code for making a new nimbleList")
   LATenv <- nCompiler:::labelAbstractTypesEnv
+  useArgs <- rep(FALSE, length(code$args))
+  useArgs[1] <- TRUE
   inserts <- LATenv$recurse_labelAbstractTypes(code, symTab, auxEnv,
                                         handlingInfo,
-                                        useArgs = c(TRUE, FALSE))
+                                        useArgs = useArgs)
   generatorName <- code$args[[1]]$name
   NCgen <- code$args[[1]]$type$NCgenerator
   classname <- nCompiler::NCinternals(NCgen)$cpp_classname
@@ -79,6 +81,7 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
   code$type <- newSym
   # The careful way to extract args, removing them from the AST
   setterArgs <- list()
+  numSetterLines <- 0
   if(length(code$args) > 1) {
     numSetterLines <- length(code$args) - 1
     setterVarNames <- names(code$args)[-1]
@@ -91,8 +94,7 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
   newCode <- nCompiler:::wrapExprClassOperator(code, "chainedCall")
   # now newCode is in the AST where code was
   newCode$type <- returnSym
-  browser()
-  
+
   # 3. Build a lambda function
   lambdaCodeOp <- nCompiler:::nParse(quote(chainedCall(LambdaFun_(decl, def))))
   #.   Place it in the AST in place of chainedCall(construct_new_nClass( listDef))
@@ -104,7 +106,7 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
   lambdaDecl <- nCompiler:::nParse(as.name(paste0('[&]()')))
   nCompiler:::setArg(lambdaCode, 1, lambdaDecl)
   
-  tempName <- quote(ans)
+  tempName <- as.name(intermediateLabelMaker())
   # Set the body to create the new object, using the
   #. chainedCall(construct_new_nClass( listDef)) piece from above
   lambdaBody <- nCompiler:::nParse(substitute({TEMP <- dummy; return(TEMP)}, 

@@ -178,7 +178,7 @@ nimOptimMethod(
     # enableSpecialHandling = FALSE,
     # pauseAfterWritingFiles = FALSE,
     # CppAD_directory = NA,
-    enableDerivs = TRUE,
+    enableDerivs = FALSE, # N2FIXME: This should default to TRUE eventually
     # buildModelDerivs = FALSE,
     # doADerrorTraps = TRUE,
     # useADreconfigure = TRUE,

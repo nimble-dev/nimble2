@@ -230,14 +230,28 @@ nf_createAllNamesFromMethodList <- function(methodList, onlyArgsAndReturn = F) {
   if (!onlyArgsAndReturn) {
     methodBodyListCode <- lapply(methodList, function(f) body(f))
   } # f$code)
-  methodReturnListCode <- list() # lapply(methodList, function(f) f$returnType) ##might need changing
-  methodArgListCode <- list() # lapply(methodList, function(f) f$argInfo$argList[[1]])
+  getReturnTypeName <- \(NF) {
+    NFI <- nCompiler:::NFinternals(NF)
+    returnSym <- NFI$returnSym
+    if(inherits(returnSym, "symbolTBD"))
+      res <- as.name(returnSym$type)
+    else
+      res <- NULL
+    res
+  }
+  methodReturnListCode <- lapply(methodList, getReturnTypeName) 
+  # lapply(methodList, function(f) f$returnType) ## need to see if a nimbleListDef is created in setup code and appears only as a return type
+  getArgNames <- \(NF) {
+    NFI <- nCompiler:::NFinternals(NF)
+    NFI$argSymTab$getSymbolNames()
+  }
+  methodArgListCode <- lapply(methodList, getArgNames) 
+  # lapply(methodList, function(f) f$argInfo$argList[[1]]) ## see if a nimbleListDef appears as an argument type
   methodListCode <- c(methodBodyListCode, methodArgListCode, methodReturnListCode)
   if (length(methodListCode) > 0) {
     return(unique(unlist(lapply(methodListCode, function(code) all.names(code)))))
   }
 }
-
 
 ## generates the argument list for the generator function
 nf_createGeneratorFunctionArgs <- function(setup, pf) {

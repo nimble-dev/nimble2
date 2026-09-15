@@ -864,8 +864,8 @@ doubleBracket_keywordInfo <- keywordInfoClass(
         ## useMap <- nDim > 0
       } else {
         allNDims <- determineNdimsFromNfproc(singleAccess_ArgList$model, nodeArg, nfProc)
-        if (length(unique(allNDims)) > 1) 
-          stop(paste0("Error for ", deparse(code), 
+        if (length(unique(allNDims)) > 1)
+          stop(paste0("Error for ", deparse(code),
               ". Inconsistent numbers of dimensions for different instances."),
                call. = FALSE)
         nDim <- allNDims[[1]]
@@ -881,7 +881,7 @@ doubleBracket_keywordInfo <- keywordInfoClass(
         accessName <- names(newFields)[1]
         addNecessarySetupAndInitCode( singleModelIndexAccess_SetupTemplate, singleAccess_ArgList, nfProc)
         # ans <- substitute(ACCESSNAME[MFLATINDEX], list(ACCESSNAME = as.name(accessName), MFLATINDEX = as.name(paste0(accessName, '_flatIndex'))))
-        ans <- substitute(ACCESSNAME[1], list(ACCESSNAME = as.name(accessName))) # The index will become "1 - 1". 
+        ans <- substitute(ACCESSNAME[1], list(ACCESSNAME = as.name(accessName))) # The index will become "1 - 1".
         #ans <- makeSingleIndexAccessExpr(accessName, as.name(accessName))
       }
       return(ans)
@@ -1056,12 +1056,12 @@ singleBracket_keywordInfo <- keywordInfoClass(
       # need to find nDim
       nList_name <- names(fields)[1]
       # Next steps with instances could be separated and generalized.
-      varName <- if(is.character(code[[3]])) code[[3]] 
+      varName <- if(is.character(code[[3]])) code[[3]]
         else nfProc$intances[[1]][[as.character(code[[3]])]]
       nDim <- nfProc$instances[[1]][[as.character(code[[2]])]]$varInfo$vars[[varName]]$nDim
       literal_part <- paste0( nList_name, "->access_at((", indexExpr, ")-1)")
       # cppCode <- paste0("nAs(", nList_name, "->access_at(", indexExpr, "), double(", nDim, "))")
-      return(substitute(nAs(nCpp(LITERAL), double(NDIM)), 
+      return(substitute(nAs(nCpp(LITERAL), double(NDIM)),
                         list(LITERAL = literal_part,
                              NDIM = nDim)))
     }
@@ -1955,8 +1955,8 @@ singleModelIndexAccess_SetupTemplate <- nimble2:::setupCodeTemplate(
     MODEL = argList$model |> deparse()
     NODEVARNAME = setupNames[1]
     INDS = setupNames[3]
-    code <- paste0(SCALAR_NODE_PTR, 
-      " = make_scalarFieldPtr(", MODEL, ", ", 
+    code <- paste0(SCALAR_NODE_PTR,
+      " = make_scalarFieldPtr(", MODEL, ", ",
       NODEVARNAME, ", ", INDS, ", true)") # true says to substract ones from the R indices.
     list(CODE = code)
    }
@@ -1978,8 +1978,8 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
   setupCodeTemplate = quote({
     VARANDINDICES <- nimble2:::getVarAndIndices(NODEVARNAME)
     VARNAME_EXPR
-    INDSNAME <- VARANDINDICES$indices |> 
-     nimble2:::indicesList2matrix() |> 
+    INDSNAME <- VARANDINDICES$indices |>
+     nimble2:::indicesList2matrix() |>
      nimble2:::setNimType(list(nDim = 2, type = "integer"))
     NULL
   }),
@@ -1993,7 +1993,7 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
       NODEVARNAME = argList$nodeExpr
     )
     if(!nodeIsLiteral) {
-      subList$VARNAME_EXPR <- 
+      subList$VARNAME_EXPR <-
       substitute(VARNAME <- as.character(VARANDINDICES$varName),
         c(subList, list(VARNAME = as.name(setupNames["varName"]))))
     }
@@ -2013,14 +2013,14 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
     MODEL <- setupNames["modelName"]
     # NODEVARNAME <- setupNames["varName"]
     nodeIsLiteral <- isTRUE(argList$nodeIsLiteral)
-    NODEVARNAME <- if(nodeIsLiteral) 
+    NODEVARNAME <- if(nodeIsLiteral)
       paste0("\"", nimble2:::getVarAndIndices(argList$nodeExpr)$varName, "\"")
       else setupNames["varName"]
     INDS = setupNames["indsName"]
     code <- paste0(
-      "rebind_fieldSTM(", 
-      STM, ", ", 
-      MODEL, ", ", 
+      "rebind_fieldSTM(",
+      STM, ", ",
+      MODEL, ", ",
       NODEVARNAME, ", ",
       INDS, ", true)") # true says to substract ones from the R indices.
     list(CODE = code)
@@ -2055,7 +2055,7 @@ singleModelValuesAccessor_SetupTemplate <- nimble2:::setupCodeTemplate(
       varName <- as.character(varName)
 
     code <- paste0(
-      nListBase_obj_name, 
+      nListBase_obj_name,
       " = interface_ptr_2_nList_ptr(",
       mvName,
       "->get_interface_ptr(",
@@ -2342,8 +2342,9 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
     if (is.null(symObj)) {
       if (nestedLeftSide) stop("Cannot find nested nimbleList definition")
       nlGenName <- deparse(leftSide)
-      if (exists(nlGenName, where = globalenv())) {
-        possibleNLgen <- get(nlGenName, envir = globalenv())
+      # nimble had broken use of scoping in the next two lines, using envir = globalenv()
+      if (exists(nlGenName, envir = environment(nfProc$nfGenerator))) {
+        possibleNLgen <- get(nlGenName, envir = environment(nfProc$nfGenerator))
 
         if (is.nlGenerator(possibleNLgen)) {
           thisFunctionMatch <- makeNimbleListTemplateWithBlankFirstArg(nl.getListDef(possibleNLgen))
@@ -2368,7 +2369,7 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
   if (inherits(symObj, "symbolNimbleFunction")) {
     # thisRCfunProc <- symObj$nfProc$RCfunProcs[[memFunName]]
     # if (is.null(thisRCfunProc)) stop(paste0("Cannot handle this expression (member function may not exist): ", deparse(code)), call. = FALSE)
-    thisFunctionMatch <- 
+    thisFunctionMatch <-
       nCompiler:::NFinternals(symObj$nfProc$origMethods[[memFunName]])$default_matchDef
     return(matchAndFill.call(thisFunctionMatch, code))
   }
@@ -2379,7 +2380,7 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
     return(matchAndFill.call(thisFunctionMatch, code))
   }
   if (inherits(symObj, "symbolNimbleFunctionList")) {
-    thisFunctionMatch <- 
+    thisFunctionMatch <-
       nCompiler::NFinternals(symObj$base_nfProc$origMethods[[memFunName]])$default_matchDef
     return(matchAndFill.call(thisFunctionMatch, code))
   }
