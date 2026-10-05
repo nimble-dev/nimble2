@@ -318,6 +318,7 @@ nfProcessing$methods(build_cpp_init_ = function() {
   init_function <- function() {}
   body(init_function) <- as.call(c(list(as.name("{")), .self$newInitCode))
   init_ <- nFunction(
+    name = "cpp_init_",
     fun = init_function,
     compileInfo = list(constructor = FALSE) # This is not an actual constructor; showing that clearly here.
   )

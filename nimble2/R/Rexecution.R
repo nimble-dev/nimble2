@@ -195,3 +195,51 @@ makeReturnVector <- function(fillValue, length, recycle) {
         }
     }
 }
+
+#' NIMBLE language functions for R-like vector construction
+#'
+#' The functions \code{c}, \code{rep}, \code{seq}, \code{which}, \code{diag}, \code{length}, \code{seq_along}, \code{is.na}, \code{is.nan}, \code{any}, and \code{all} can be used in nimbleFunctions and compiled using \code{compileNimble}.
+#'
+#' @name nimble-R-functions
+#'
+#' @param ... values to be concatenated.
+#' @param x vector of values to be replicated (\code{rep}), or logical array or vector (\code{which}), or object whose length is wanted (\code{length}), or input value (\code{diag}), or vector of values to be tested/checked (\code{is.na}, \code{is.nan}, \code{any}, \code{all}).
+#' @param from starting value of sequence.
+#' @param to end value of sequence.
+#' @param by increment of the sequence.
+#' @param length.out desired length of the sequence.
+#'
+#' @aliases nimC nimRep nimSeq c rep seq which diag length seq_along is.na is.nan any all
+#'
+#' @details
+#' For \code{c}, \code{rep}, \code{seq}, these functions are NIMBLE's version of similar R functions, e.g., \code{nimRep} for \code{rep}.   In a \code{nimbleFunction}, either the R name (e.g., \code{rep}) or the NIMBLE name (e.g., \code{nimRep}) can be used.  If the R name is used, it will be converted to the NIMBLE name. For \code{which}, \code{length}, \code{diag}, \code{seq_along}, \code{is.na}, \code{is.nan}, \code{any}, \code{all} simply use the standard name without \code{"nim"}. These functions largely mimic (see exceptions below) the behavior of their R counterparts, but they can be compiled in a \code{nimbleFunction} using \code{compileNimble}.
+#' 
+#' \code{nimC} is NIMBLE's version of \code{c} and behaves identically.
+#'
+#' \code{nimRep} is NIMBLE's version of \code{rep}.  It should behave identically to \code{rep}.  There are no NIMBLE versions of \code{rep.int} or \code{rep_len}.
+#'
+#' \code{nimSeq} is NIMBLE's version of \code{seq}.  It behaves like \code{seq} with support for \code{from}, \code{to}, \code{by} and \code{length.out} arguments.  The \code{along.with} argument is not supported.  There are no NIMBLE versions of \code{seq.int}, \code{seq_along} or \code{seq_len}, with the exception that \code{seq_along} can take a nimbleFunctionList as an argument to provide the index range of a for-loop (\href{https://r-nimble.org/manual/cha-welcome-nimble.html}{User Manual} Ch. 13). 
+#'
+#' \code{which} behaves like the R version but without support for \code{arr.ind} or \code{useNames} arguments.
+#'
+#' \code{diag} behaves like the R version but without support for the \code{nrow} and \code{ncol} arguments.
+#'
+#' \code{length} behaves like the R version.
+#' 
+#' \code{seq_along} behaves like the R version.
+#'
+#' \code{is.na} behaves like the R version but does not correctly handle \code{NA} values from R that are type 'logical', so convert these using \code{as.numeric()} before passing from R to NIMBLE.
+#' 
+#' \code{is.nan} behaves like the R version, but treats \code{NA} of type 'double' as being \code{NaN} and \code{NA} of type 'logical' as not being \code{NaN}. 
+#' 
+#' \code{any} behaves like the R version but takes only one argument and treats NAs as \code{FALSE}.
+#'
+#' \code{all} behaves like the R version but takes only one argument and treats NAs as \code{FALSE}.
+#'
+NULL
+
+#' @rdname nimble-R-functions
+#' @export
+nimC <- function(...) {
+    c(...)
+}

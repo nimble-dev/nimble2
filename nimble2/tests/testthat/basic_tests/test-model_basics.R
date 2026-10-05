@@ -35,7 +35,7 @@ test_that("compileNimble works with model and nimbleFunction", {
   expect_equal(cnf$m$y, 1:5)
 })
 
-test_that("compileNimble works nimbleFunction using model$calculate", {
+test_that("compileNimble works with nimbleFunction using model$calculate", {
   nimbleOptions(enableDerivs = FALSE)
   .GlobalEnv$BROWSE_COMPILE_NIMBLE <- FALSE
   
@@ -89,7 +89,7 @@ test_that("compileNimble works nimbleFunction using model$calculate", {
   rm(nf1); gc()
 })
 
-test_that("compileNimble works nimbleFunction using model$simulate", {
+test_that("compileNimble works with nimbleFunction using model$simulate", {
   message("model$simulate needs support for includeData argument")
   nimbleOptions(enableDerivs = FALSE)
   .GlobalEnv$BROWSE_COMPILE_NIMBLE <- FALSE
@@ -156,7 +156,7 @@ test_that("compileNimble works nimbleFunction using model$simulate", {
   rm(nf1); gc()
 })
 
-test_that("compileNimble works nimbleFunction using model$calculateDiff and model$getLogProb", {
+test_that("compileNimble works with nimbleFunction using model$calculateDiff and model$getLogProb", {
   nimbleOptions(enableDerivs = FALSE)
   .GlobalEnv$BROWSE_COMPILE_NIMBLE <- FALSE
   
@@ -229,4 +229,54 @@ test_that("compileNimble works nimbleFunction using model$calculateDiff and mode
   rm(nf1); gc()
 })
 
+test_that("basic getParam and getBound works", {
+
+  code <- quote({
+    tau ~ dunif(0, 100)
+    mu ~ dnorm(0, 1)
+    for (i in 1:5) {
+      y[i] ~ dnorm(mu, var = tau)
+    }
+  })
+  
+  inits <- list(tau = 25, mu = 0)
+  data <- list(y = rnorm(5))
+  
+  mclass <- nimbleModel::nimbleModel(code, inits = inits, data = data, returnClass = TRUE)
+  m <- mclass$new()
+  m$calculate()
+    
+  nf <- nimbleFunction(
+    setup = function(model, node1, param, node2) {
+    },
+    methods = list(
+      checkParam = function() {
+        ans <- model$getParam(node1, param)
+        return(ans)
+        returnType(double())
+      },
+      checkBounds = function() {
+        ans1 <- model$getBound(node1, "lower")
+        ans2 <- model$getBound(node1, "upper")
+        ans3 <- model$getBound(node2, "lower")
+        ans4 <- model$getBound(node2, "upper")
+        ans <- c(ans1, ans2, ans3, ans4)
+        return(ans)
+        returnType(double(1))
+      }
+    ),
+    check = FALSE
+  )
+  
+  nf1 <- nf(m, "y[3]", "sd", "tau")
+  expect_equal(nf1$checkParam(), 5)
+  expect_equal(nf1$checkBounds(), c(-Inf, Inf, 0, 100))
+  
+  comp <- compileNimble(m, nf1)
+  expect_equal(comp$nf1$checkParam(), 5)
+  expect_equal(comp$nf1$checkBounds(), c(-Inf, Inf, 0, 100))
+  comp$nf1 <- NULL
+  rm(nf1, comp)
+  gc()
+})
 

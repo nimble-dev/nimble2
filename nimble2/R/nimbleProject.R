@@ -580,7 +580,7 @@ nimbleProjectClass <- R6::R6Class(
             newSetupOutputNames_models |> lapply(\(x) model_get_compiled_internal(inst_newSetupEnv[[x]])) |> setNames(newSetupOutputNames_models)
           )
         nCompiler::value(compiled_instances[[i]]) <- setupOutputList
-        compiled_instances[[i]]$cpp_init_()
+        nCompiler::method(compiled_instances[[i]], "cpp_init_")()
       }
       NFgens[[generatorName]]$compiled_instances <<- compiled_instances
     },

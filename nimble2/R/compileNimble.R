@@ -6,14 +6,28 @@ make_model_calls_methods <- function(code, symTab, auxEnv, info) {
     model_calculate = "calculate_impl",
     model_calculateDiff = "calculateDiff_impl",
     model_simulate = "simulate_impl",
-    model_getLogProb = "getLogProb_impl"
+    model_getLogProb = "getLogProb_impl",
+    model_getBound = "getBound_impl",
+    model_getParam = "getParam_impl"
   )
-  new_code <- substitute(
-    MODEL$METHOD(INSTRLISTNAME),
-    list(MODEL = as.name(code$args[[1]]$name),
-         METHOD = as.name(method),
-         INSTRLISTNAME = as.name(code$args[[2]]$name))
-  )
+  if(length(code$args) == 2) {
+    new_code <- substitute(
+      MODEL$METHOD(INSTRLISTNAME),
+      list(MODEL = as.name(code$args[[1]]$name),
+          METHOD = as.name(method),
+          INSTRLISTNAME = as.name(code$args[[2]]$name))
+    )
+  } else if(length(code$args) == 3) {
+    new_code <- substitute(
+      MODEL$METHOD(INSTRNAME, PARAMIDNAME),
+      list(MODEL = as.name(code$args[[1]]$name),
+          METHOD = as.name(method),
+          # From getParam or getBound, INSTR will be an expression like somename_instrList[[1]]
+          # so we need to not just use the op name but get the expression
+          INSTRNAME = parse(text = nCompiler::nDeparse(code$args[[2]]), keep.source=FALSE)[[1]], # as.name(code$args[[2]]$name),
+          PARAMIDNAME = as.name(code$args[[3]]$name))
+    )
+  } else stop("In make_model_calls_methods, expected exactly 2 or 3 arguments.")
   new_expr <- nCompiler::nParse(new_code)
   nCompiler:::replaceArgInCaller(code, new_expr)
   nCompiler:::compile_normalizeCalls(new_expr, symTab, auxEnv)
@@ -156,6 +170,8 @@ nimble_nCompiler_opDefs <- list(
   model_calculate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_calculateDiff = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_simulate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getParam = list(matchDef = function(model, instr, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getBound = list(matchDef = function(model, instr, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getLogProb = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   getOrSetValues_ = list(matchDef = function(multiCopier) {},
     labelAbstractTypes = list(handler = getOrSetValues_LAT)),
@@ -172,6 +188,7 @@ nimble_nCompiler_opDefs <- list(
 )
 
 #' @importFrom nCompiler registerOpDef deregisterOpDef
+#' @importFrom nimbleModel modelValues modelValuesConf
 #' @export
 compileNimble <- function(..., project, dirName = NULL, projectName = "",
                           control = list(),

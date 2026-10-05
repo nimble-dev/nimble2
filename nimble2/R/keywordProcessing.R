@@ -173,7 +173,8 @@ getParam_keywordInfo <- keywordInfoClass(
       return(code)
     }
     errorContext <- deparse(code)
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$node, includeData = TRUE, sortUnique = TRUE, errorContext = errorContext)
+    nodeFunVec_ArgList <- list(model = code$model, nodes = code$node, param = code$param,
+                               includeData = TRUE, sortUnique = TRUE, errorContext = errorContext)
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
       if (!isCodeArgBlank(code, "nodes")) {
         stop("nodes argument cannot be provided to getParam if nodeFunctionIndex is specified")
@@ -197,37 +198,71 @@ getParam_keywordInfo <- keywordInfoClass(
       nodeFunVec_ArgList$sortUnique <- FALSE
     }
 
-    nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
+    ## This is main case (regular mode), including without derivs at all
+    #  and with buildDerivs but not nimDerivs(model$calculate...)
+    nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
-    if (isCodeArgBlank(code, "param")) {
-      stop("'param' argument missing from 'getParam', with no accessor argument supplied")
-    }
+    paramFields <- paramID_SetupTemplate$makeFields(nodeFunVec_ArgList)
+    paramIDname <- names(paramFields)[1]
+    nodeFunVec_ArgList$instrListName <- as.name(nodeFunName)
+    addNecessarySetupAndInitCode(paramID_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
-    ## Avoid situations where user has syntax from run code in `param` or of getting anything from global env (issue 1344).
-    paramVars <- all.vars(code$param)
-    wh <- which(!paramVars %in% nfProc$setupSymTab$getSymbolNames())
-    if (length(wh)) {
-      stop("`param` argument in `getParam` contains variables not found in setup code: ", paste(paramVars[wh], collapse = ", "), ".")
-    }
+    # Determine the type for "nAs", based on first instance.
+    modelObj <- eval(code$model, envir = nfProc$instances[[1]])
+    nodeObj <- eval(code$node, envir = nfProc$instances[[1]])
+    paramObj <- eval(code$param, envir = nfProc$instances[[1]])
+    nodeRange <- nimbleModel:::getNodes(modelObj, nodeObj)
+    dist <- modelObj$getDistribution(nodeRange[[1]])
+    distInfo <- nimbleModel:::getDistributionInfo(dist)
+    paramType <- distInfo$types[[paramObj]]
+    nDim <- paramType$nDim
+    targetType <- paste0("double(", nDim, ")")
 
-    paramInfo_ArgList <- list(model = code$model, node = nodeFunVec_ArgList$nodes, param = code$param, hasIndex = useNodeFunctionVectorByIndex) ## use nodeFunVec_ArgList$nodes instead of code$node because nodeFunVec_ArgList$nodes may have been updated if code$nodes has a run-time index.  In that case the paramID will be vector
-
-    paramInfoName <- paramInfo_SetupTemplate$makeName(paramInfo_ArgList)
-    paramIDname <- paramInfo_SetupTemplate$makeOtherNames(paramInfoName, paramInfo_ArgList)
-
-    addNecessarySetupCode(nodeFunName, nodeFunVec_ArgList, nodeFunctionVector_SetupTemplate, nfProc)
-    addNecessarySetupCode(paramInfoName, paramInfo_ArgList, paramInfo_SetupTemplate, nfProc)
     if (!useNodeFunctionVectorByIndex) {
       newRunCode <- substitute(
-        getParam(nodeFunction = NODEFUNVEC_NAME, paramID = PARAMID_NAME, paramInfo = PARAMINFO_NAME),
-        list(NODEFUNVEC_NAME = as.name(nodeFunName), PARAMID_NAME = as.name(paramIDname), PARAMINFO_NAME = as.name(paramInfoName))
+        nAs(model_getParam(MODEL, NODEFUNVEC_NAME[[1]], PARAMID), targetType),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
+            PARAMID = as.name(paramIDname),
+            targetType = targetType
+            )
       )
     } else {
-      newRunCode <- substitute(
-        getParam(nodeFunction = NODEFUNVEC_NAME, paramID = PARAMID_NAME, paramInfo = PARAMINFO_NAME, nodeFunctionIndex = NODEFUNVECINDEX),
-        list(NODEFUNVEC_NAME = as.name(nodeFunName), PARAMID_NAME = as.name(paramIDname), PARAMINFO_NAME = as.name(paramInfoName), NODEFUNVECINDEX = nodesIndexExpr)
-      )
+      stop("getBound with a nodes[i] (indexed node) is not supported in nimble2 yet.")
     }
+
+    # nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
+
+    # if (isCodeArgBlank(code, "param")) {
+    #   stop("'param' argument missing from 'getParam', with no accessor argument supplied")
+    # }
+
+    # ## Avoid situations where user has syntax from run code in `param` or of getting anything from global env (issue 1344).
+    # paramVars <- all.vars(code$param)
+    # wh <- which(!paramVars %in% nfProc$setupSymTab$getSymbolNames())
+    # if (length(wh)) {
+    #   stop("`param` argument in `getParam` contains variables not found in setup code: ", paste(paramVars[wh], collapse = ", "), ".")
+    # }
+
+    # paramInfo_ArgList <- list(model = code$model, node = nodeFunVec_ArgList$nodes, param = code$param, hasIndex = useNodeFunctionVectorByIndex) ## use nodeFunVec_ArgList$nodes instead of code$node because nodeFunVec_ArgList$nodes may have been updated if code$nodes has a run-time index.  In that case the paramID will be vector
+
+    # paramInfoName <- paramInfo_SetupTemplate$makeName(paramInfo_ArgList)
+    # paramIDname <- paramInfo_SetupTemplate$makeOtherNames(paramInfoName, paramInfo_ArgList)
+
+    # addNecessarySetupCode(nodeFunName, nodeFunVec_ArgList, nodeFunctionVector_SetupTemplate, nfProc)
+    # addNecessarySetupCode(paramInfoName, paramInfo_ArgList, paramInfo_SetupTemplate, nfProc)
+    # if (!useNodeFunctionVectorByIndex) {
+    #   newRunCode <- substitute(
+    #     getParam(nodeFunction = NODEFUNVEC_NAME, paramID = PARAMID_NAME, paramInfo = PARAMINFO_NAME),
+    #     list(NODEFUNVEC_NAME = as.name(nodeFunName), PARAMID_NAME = as.name(paramIDname), PARAMINFO_NAME = as.name(paramInfoName))
+    #   )
+    # } else {
+    #   newRunCode <- substitute(
+    #     getParam(nodeFunction = NODEFUNVEC_NAME, paramID = PARAMID_NAME, paramInfo = PARAMINFO_NAME, nodeFunctionIndex = NODEFUNVECINDEX),
+    #     list(NODEFUNVEC_NAME = as.name(nodeFunName), PARAMID_NAME = as.name(paramIDname), PARAMINFO_NAME = as.name(paramInfoName), NODEFUNVECINDEX = nodesIndexExpr)
+    #   )
+    # }
 
     return(newRunCode)
   }
@@ -240,52 +275,74 @@ getBound_keywordInfo <- keywordInfoClass(
       return(code)
     }
     errorContext <- deparse(code)
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$node, includeData = TRUE, sortUnique = TRUE, errorContext = errorContext)
+    nodeFunVec_ArgList <- list(model = code$model, nodes = code$node, bound = code$bound,
+        includeData = TRUE, sortUnique = TRUE, errorContext = errorContext)
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
       if (!isCodeArgBlank(code, "nodes")) {
-        stop("nodes argument cannot be provided to getParam if nodeFunctionIndex is specified")
+        stop("nodes argument cannot be provided to getBound if nodeFunctionIndex is specified")
       }
       return(code) ## no modification needed!
     }
 
     if (isCodeArgBlank(code, "model")) {
-      stop("model argument missing from getParam, with no accessor argument supplied")
+      stop("model argument missing from getBound, with no accessor argument supplied")
     }
     if (isCodeArgBlank(code, "node")) {
-      stop("node argument missing from getParam, with no accessor argument supplied")
+      stop("node argument missing from getBound, with no accessor argument supplied")
     }
 
+    # To-do: support model$calculate(nodes[i])
     useNodeFunctionVectorByIndex <- FALSE
-    if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
+    if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like getBound(model, nodes[i]), which could have started as model$calculate(nodes[i])
       useNodeFunctionVectorByIndex <- TRUE
-      if (length(nodeFunVec_ArgList$nodes) != 3) stop(paste0("Problem with ", deparse(code), ". If you need to index on the nodes argument there should be only one index."))
+      if (length(nodeFunVec_ArgList$nodes) != 3) 
+        stop(paste0("Problem with ", deparse(code), ". If you need to index on the nodes argument there should be only one index."))
       nodesIndexExpr <- nodeFunVec_ArgList$nodes[[3]]
       nodeFunVec_ArgList$nodes <- nodeFunVec_ArgList$nodes[[2]]
       nodeFunVec_ArgList$sortUnique <- FALSE
     }
 
-    nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
+    ## This is main case (regular mode), including without derivs at all
+    #  and with buildDerivs but not nimDerivs(model$calculate...)
+    nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
-    if (isCodeArgBlank(code, "bound")) {
-      stop("'bound' argument missing from 'getBound', with no accessor argument supplied")
-    }
-    boundInfo_ArgList <- list(model = code$model, node = nodeFunVec_ArgList$nodes, bound = code$bound) ## use nodeFunVec_ArgList$nodes instead of code$node because nodeFunVec_ArgList$nodes may have been updated if code$nodes has a run-time index.  In that case the boundID will be vector
-    boundInfoName <- boundInfo_SetupTemplate$makeName(boundInfo_ArgList)
-    boundIDname <- boundInfo_SetupTemplate$makeOtherNames(boundInfoName, boundInfo_ArgList)
-
-    addNecessarySetupCode(nodeFunName, nodeFunVec_ArgList, nodeFunctionVector_SetupTemplate, nfProc)
-    addNecessarySetupCode(boundInfoName, boundInfo_ArgList, boundInfo_SetupTemplate, nfProc)
+    boundIDname <- boundID_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+    addNecessarySetupAndInitCode(boundID_SetupTemplate, nodeFunVec_ArgList, nfProc)
+    
     if (!useNodeFunctionVectorByIndex) {
       newRunCode <- substitute(
-        getBound(nodeFunction = NODEFUNVEC_NAME, boundID = BOUNDID_NAME, boundInfo = BOUNDINFO_NAME),
-        list(NODEFUNVEC_NAME = as.name(nodeFunName), BOUNDID_NAME = as.name(boundIDname), BOUNDINFO_NAME = as.name(boundInfoName))
+        model_getBound(MODEL, NODEFUNVEC_NAME[[1]], BOUNDID),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
+            BOUNDID = as.name(boundIDname))
       )
     } else {
-      newRunCode <- substitute(
-        getBound(nodeFunction = NODEFUNVEC_NAME, boundID = BOUNDID_NAME, boundInfo = BOUNDINFO_NAME, nodeFunctionIndex = NODEFUNVECINDEX),
-        list(NODEFUNVEC_NAME = as.name(nodeFunName), BOUNDID_NAME = as.name(boundIDname), BOUNDINFO_NAME = as.name(boundInfoName), NODEFUNVECINDEX = nodesIndexExpr)
-      )
+      stop("getBound with a nodes[i] (indexed node) is not supported in nimble2 yet.")
     }
+
+    # nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
+
+    # if (isCodeArgBlank(code, "bound")) {
+    #   stop("'bound' argument missing from 'getBound', with no accessor argument supplied")
+    # }
+    # boundInfo_ArgList <- list(model = code$model, node = nodeFunVec_ArgList$nodes, bound = code$bound) ## use nodeFunVec_ArgList$nodes instead of code$node because nodeFunVec_ArgList$nodes may have been updated if code$nodes has a run-time index.  In that case the boundID will be vector
+    # boundInfoName <- boundInfo_SetupTemplate$makeName(boundInfo_ArgList)
+    # boundIDname <- boundInfo_SetupTemplate$makeOtherNames(boundInfoName, boundInfo_ArgList)
+
+    # addNecessarySetupCode(nodeFunName, nodeFunVec_ArgList, nodeFunctionVector_SetupTemplate, nfProc)
+    # addNecessarySetupCode(boundInfoName, boundInfo_ArgList, boundInfo_SetupTemplate, nfProc)
+    # if (!useNodeFunctionVectorByIndex) {
+    #   newRunCode <- substitute(
+    #     getBound(nodeFunction = NODEFUNVEC_NAME, boundID = BOUNDID_NAME, boundInfo = BOUNDINFO_NAME),
+    #     list(NODEFUNVEC_NAME = as.name(nodeFunName), BOUNDID_NAME = as.name(boundIDname), BOUNDINFO_NAME = as.name(boundInfoName))
+    #   )
+    # } else {
+    #   newRunCode <- substitute(
+    #     getBound(nodeFunction = NODEFUNVEC_NAME, boundID = BOUNDID_NAME, boundInfo = BOUNDINFO_NAME, nodeFunctionIndex = NODEFUNVECINDEX),
+    #     list(NODEFUNVEC_NAME = as.name(nodeFunName), BOUNDID_NAME = as.name(boundIDname), BOUNDINFO_NAME = as.name(boundInfoName), NODEFUNVECINDEX = nodesIndexExpr)
+    #   )
+    # }
 
     return(newRunCode)
   }
@@ -330,7 +387,7 @@ calculate_keywordInfo <- keywordInfoClass(
     if (isCodeArgBlank(code, "model")) {
       stop("model argument missing from calculate, with no accessor argument supplied")
     }
-    # To-do: Support model$calculate()
+    # To-do: Support model$calculate() (with no nodes argument)
     if (isCodeArgBlank(code, "nodes")) {
       LHSnodes_ArgList <- list(model = code$model)
       LHSnodes_name <- allLHSNodes_SetupTemplate$makeName(LHSnodes_ArgList)
@@ -778,9 +835,11 @@ doubleBracket_keywordInfo <- keywordInfoClass(
     possibleObjects <- c("symbolModel", "symbolNimPtrList", "symbolNimbleFunctionList", "symbolNimbleList")
     class <- symTypeFromSymTab(code[[2]], nfProc$setupSymTab, options = possibleObjects)
     if (is.null(class)) { ## assume that an element of a run-time provided nimbleList is being accessed
-      cat("Case found where doubleBracket keyword handler doesn't know the class.\n")
-      browser()
+      # Example of how we end up here:
+      # getParam created code with somename_instrList[[1]],
+      # then we are here for the `[[` but the somename_instrList is not in the symbol table yet
       return(code)
+      # In nimble, we got here by a nimbleList case.
       # message("Keyword processor for [[ hasn't handled this case (class is null)")
       # nl_charName <- as.character(callerCode)
       # nl_fieldName <- as.character(code[[3]])
@@ -913,7 +972,6 @@ dollarSign_keywordInfo <- keywordInfoClass(
   keyword = "$",
   processor = function(code, nfProc, RCfunProc) {
     callerCode <- code[[2]]
-
     if (is.null(nfProc)) {
       cat("caught a case where dollarSign keyword processor is called without nfProc.\n");
       browser()
@@ -1353,8 +1411,8 @@ matchFunctions[["nimRep"]] <- function(x, times = 1, length.out, each = 1) {}
 # matchFunctions[["nimMatrix"]] <- nimMatrix
 # matchFunctions[["nimArray"]] <- nimArray
 matchFunctions[["values"]] <- function(model, nodes, accessor) {}
-# matchFunctions[["getParam"]] <- getParam
-# matchFunctions[["getBound"]] <- getBound
+matchFunctions[["getParam"]] <- function(model, node, param, nodeFunctionIndex, warn = TRUE) {}
+matchFunctions[["getBound"]] <- function(model, node, bound, nodeFunctionIndex) {}
 matchFunctions[["calculate"]] <- function(model, nodes, nodeFxnVector, nodeFunctionIndex) {}
 matchFunctions[["calculateDiff"]] <- function(model, nodes, nodeFxnVector, nodeFunctionIndex) {}
 matchFunctions[["simulate"]] <- function(model, nodes, includeData = FALSE, nodeFxnVector, nodeFunctionIndex) {}
@@ -1728,6 +1786,51 @@ multiCopier_setupCodeTemplate <- setupCodeTemplate(
 #     )
 #   }
 # )
+
+boundID_SetupTemplate <- setupCodeTemplate(
+  # Note to programmer: required fields of argList are model, node and bound
+  makeSetupNames = function(argList, ...) {
+    Rname2CppName(paste(deparse(argList$model),
+      deparse(argList$nodes),
+      deparse(argList$bound),
+      "boundID",
+      sep = "_"
+    ))
+  },
+  setupCodeTemplate = quote(
+    BOUNDIDNAME <- if(BOUND == "lower") 0 else if(BOUND == "upper") 1 else stop("bound must be either 'lower' or 'upper'.")
+  ),
+  makeSetupCodeSubList = function(setupNames, argList, ...) {
+    list(
+      BOUNDIDNAME = as.name(setupNames[1]),
+      BOUND = argList$bound
+    )
+  }
+)
+
+paramID_SetupTemplate <- setupCodeTemplate(
+  makeFields = function(argList, ...) {
+    fieldName <- Rname2CppName(paste(deparse(argList$model),
+      deparse(argList$nodes),
+      deparse(argList$param),
+      "paramID",
+      sep = "_"
+    ))
+    list("integerScalar") |> setNames(fieldName)
+  },
+  initCodeTemplate = quote( {
+    PARAMIDNAME <- MODEL$getParamID_impl(INSTRLISTNAME[[1]], PARAM)
+    }
+  ),
+  makeInitCodeSubList = function(fields, setupNames, argList, ...){
+    list(
+      PARAMIDNAME = as.name(names(fields)[1]),
+      MODEL = argList$model,
+      INSTRLISTNAME = argList$instrListName,
+      PARAM = argList$param
+    )
+  }
+)
 
 # Formerly nodeFunctionVector_SetupTemplate
 nodeInstrList_SetupTemplate <- setupCodeTemplate(
@@ -2339,6 +2442,7 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
 
   if (memFunName == "new") { ## this is unique because in non-nested mode, this can be looking for a nlDef in global environment (or possibly elsewhere, but not dealt with)
     ## symObj can be null here
+    browser()
     if (is.null(symObj)) {
       if (nestedLeftSide) stop("Cannot find nested nimbleList definition")
       nlGenName <- deparse(leftSide)
