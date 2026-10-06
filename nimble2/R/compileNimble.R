@@ -193,9 +193,9 @@ nimble_nCompiler_opDefs <- list(
 compileNimble <- function(..., project, dirName = NULL, projectName = "",
                           control = list(),
                           resetFunctions = FALSE,
+                          reset = FALSE,
                           showCompilerOutput = getNimbleOption("showCompilerOutput")) {
   ## 1. Extract compilation items
-  reset <- FALSE
   ## This pulls out ... arguments, makes names from their expressions if names weren't provided, and combines them with any ... arguments that are lists.
   controlDefaults <- list(
     debug = FALSE, debugCpp = FALSE, compileR = TRUE,
@@ -232,16 +232,27 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   if (length(units) == 0) stop("No objects for compilation provided")
 
   ## 2. Get project or make new project
-  if (missing(project)) {
-    if (reset) {
-      warning(paste0(
-        "You requested 'reset = TRUE', but no project was provided.",
-        " If you are trying to re-compiled something into the same project, ",
-        "give it as the project argument as well as a compilation item.",
-        " For example, 'compileNimble(myFunction, project = myFunction, reset = TRUE)'."
-      ))
+  # reset = TRUE: compile the inputs in a new project. Objects already registered
+  #   to another project are moved to the new one.
+  # project provided: use it (it can be a project or any object registered to one).
+  # Otherwise: use the project that the inputs belong to, if any. It is an error
+  #   if the inputs belong to different projects. Otherwise use the nimbleProject
+  #   option if set, or else a new project.
+  if (reset) {
+    if (!missing(project)) {
+      stop("reset = TRUE compiles the inputs in a new project, so the project argument should not be provided.", call. = FALSE)
     }
-    if (!is.null(getNimbleOption("nimbleProject"))) {
+    project <- nimbleProjectClass$new(name = projectName)
+    project$replace_registrations <- TRUE
+    on.exit(project$replace_registrations <- FALSE, add = TRUE)
+  } else if (missing(project)) {
+    units_projects <- unique_nimbleProjects(lapply(units, nimbleProject_registry_lookup))
+    if (length(units_projects) > 1) {
+      stop("The objects provided for compilation belong to different nimbleProjects, so they can't be compiled together.", call. = FALSE)
+    }
+    if (length(units_projects) == 1) {
+      project <- units_projects[[1]]
+    } else if (!is.null(getNimbleOption("nimbleProject"))) {
       project <- getNimbleOption("nimbleProject")
     } else {
       project <- nimbleProjectClass$new(name = projectName) # is dirName needed?
@@ -258,10 +269,9 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
     }
   } else {
     project <- getNimbleProject(project, TRUE)
-    if (!inherits(project, "nimbleProjectClass")) {
-      stop("Invalid project argument; note that models and nimbleFunctions need to be compiled before they can be used to specify a project. Once compiled you can use an R model or nimbleFunction to specify the project.", call. = FALSE)
-    }
   }
+  # An input registered to a different project than the one chosen is caught when
+  # the project tracks it (see nimbleProject_registry_add).
   if (resetFunctions) project$resetFunctions()
 
   for (i in names(controlDefaults)) {
@@ -348,29 +358,33 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   if (isTRUE(.GlobalEnv$BROWSE_COMPILE_NIMBLE)) browser()
 
   project$process()
+  # Only units not already compiled in this project are collected.
   nComp_units <- project$get_nComp_units()
 
   # names(nComp_units) <- names(units)
-  nCompiler::registerOpDef(nimble_nCompiler_opDefs)
-  on.exit({
-    nCompiler::deregisterOpDef(ls(nimble_nCompiler_opDefs))
-  })
-  nCompile_results <- do.call(nCompiler::nCompile, c(nComp_units, list(returnList = TRUE)))
+  nCompile_results <- list()
+  if (length(nComp_units)) {
+    nCompiler::registerOpDef(nimble_nCompiler_opDefs)
+    on.exit({
+      nCompiler::deregisterOpDef(ls(nimble_nCompiler_opDefs))
+    }, add = TRUE)
+    nCompile_results <- do.call(nCompiler::nCompile, c(nComp_units, list(returnList = TRUE)))
+  }
 
   if (isTRUE(.GlobalEnv$BROWSE_COMPILE_NIMBLE)) browser()
 
   compiled_units <- vector("list", length = length(units))
 
-  # simple functions (rcf) do not need instantiation, so they can be extracted first.
+  # Only objects that do not yet have compiled counterparts are instantiated and populated.
+  project$instantiate_and_populate(nCompile_results)
+
+  # simple functions (rcf) do not need instantiation.
   if (sum(rcfUnits) > 0) {
     whichUnits <- which(rcfUnits)
     for (i in whichUnits) {
-      this_name <- nCompiler::NFinternals(units[[i]])$uniqueName
-      compiled_units[[i]] <- nCompile_results[[this_name]]
+      compiled_units[[i]] <- project$RCfunction_getResults(units[[i]])
     }
   }
-
-  project$instantiate_and_populate(nCompile_results)
 
   if (sum(modelUnits) > 0) {
     whichUnits <- which(modelUnits)
@@ -414,23 +428,29 @@ getNimbleTypes <- function(units) {
   ans
 }
 
-# return the nimble project, if any, associated with a model or nimbleFunction object.
-# This feature needs attention. It may be redesigned or deprecated.
+# Return the nimbleProject associated with project, which can be a nimbleProject
+# or any object registered to one: a model, nimbleFunction instance, modelValues
+# or nimbleList object, or a compiled counterpart of one of these.
 getNimbleProject <- function(project, stopOnNull = FALSE) {
   if (inherits(project, "nimbleProjectClass")) {
     return(project)
   }
-  # From here down, this has not been updated to nimble2.
-  if (is.nf(project)) {
-    return(nfVar(project, "nimbleProject"))
+  ans <- nimbleProject_registry_lookup(project)
+  if (is.null(ans) && stopOnNull) {
+    stop(paste0(
+      "Cannot determine a nimbleProject from the project argument. It should be a nimbleProject,",
+      " or a model or nimbleFunction (or compiled version of one) that has already been compiled."
+    ), call. = FALSE)
   }
-  if (is.rcf(project)) {
-    return(environment(project)$nfMethodRCobject$nimbleProject)
-  }
-  ans <- try(project$nimbleProject)
-  if (inherits(ans, "try-error") | is.null(ans)) {
-    if (stopOnNull) stop(paste0("cannot determine nimbleProject from provided project argument"))
-    return(NULL)
+  ans
+}
+
+# Given a list of projects (some possibly NULL), return a list of the distinct non-NULL ones.
+unique_nimbleProjects <- function(projects) {
+  ans <- list()
+  for (project in projects) {
+    if (is.null(project)) next
+    if (!any(vapply(ans, \(x) identical(x, project), logical(1)))) ans <- c(ans, list(project))
   }
   ans
 }
