@@ -1850,10 +1850,10 @@ nodeInstrList_SetupTemplate <- setupCodeTemplate(
   setupCodeTemplate = quote(
     INSTRLISTNAME <- nimbleModel:::makeInstrList(
       model = MODEL,
-      input = NODES
-      #,
+      input = NODES,
       #wrtNodes = WRTNODES,
-      #excludeData = EXCLUDEDATA,
+      includeData = INCLUDEDATA
+      #,
       #sortUnique = SORTUNIQUE,
       #errorContext = ERRORCONTEXT
     )
@@ -1862,10 +1862,10 @@ nodeInstrList_SetupTemplate <- setupCodeTemplate(
     list(
       INSTRLISTNAME = as.name(setupNames[1]),
       MODEL = argList$model,
-      NODES = argList$nodes
-      #,
+      NODES = argList$nodes,
       #WRTNODES = argList$wrtNodes,
-      #EXCLUDEDATA = !argList$includeData,
+      INCLUDEDATA = argList$includeData
+      #,
       #SORTUNIQUE = argList$sortUnique,
       #ERRORCONTEXT = argList$errorContext
     )
@@ -2442,7 +2442,6 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
 
   if (memFunName == "new") { ## this is unique because in non-nested mode, this can be looking for a nlDef in global environment (or possibly elsewhere, but not dealt with)
     ## symObj can be null here
-    browser()
     if (is.null(symObj)) {
       if (nestedLeftSide) stop("Cannot find nested nimbleList definition")
       nlGenName <- deparse(leftSide)

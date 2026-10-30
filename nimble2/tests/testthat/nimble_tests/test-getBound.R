@@ -6,24 +6,26 @@ options(warn = 1)
 nimbleVerboseSetting <- nimbleOptions('verbose')
 nimbleOptions(verbose = FALSE)
 
+# N2FIXME: uncomment dmnorm and ddirch when supported
+# N2FIXME: uncomment truncated dists when supported
 test_that("building of model with initial value issues in bounds", {
     code <- nimbleCode({
-        y1 ~ T(dnorm(mu, sd = sig),b,d)  # non-constant trunc bounds
-        y2 ~ T(dnorm(0,1), y2l, y2u)       # constant trunc bounds
-        y3 ~ T(dnorm(0,1), exp(y2l), y3u)       # constant trunc bounds
+#        y1 ~ T(dnorm(mu, sd = sig),b,d)  # non-constant trunc bounds
+#        y2 ~ T(dnorm(0,1), y2l, y2u)       # constant trunc bounds
+#        y3 ~ T(dnorm(0,1), exp(y2l), y3u)       # constant trunc bounds
         y2l ~ dnorm(0,1)
         y3u <- 15*cc
         mu ~ dnorm(0, 1)                 
         sig ~ dunif(0, 5)
         b ~ dunif(a,d)                   # non-constant unif bounds
         a ~ dunif(al,4)                  # constant unif bounds
-        z[1:2] ~ dmnorm(mu0[1:2], prec0[1:2,1:2])           # mv dist
-        alpha[1:3] ~ ddirch(alpha0[1:3]) # mv dist with actual bound
+#        z[1:2] ~ dmnorm(mu0[1:2], prec0[1:2,1:2])           # mv dist
+#        alpha[1:3] ~ ddirch(alpha0[1:3]) # mv dist with actual bound
         for(i in 1:3)
             alpha0[i] ~ dgamma(1,1)
-        y4 ~ T(dgamma(1, 1), y4l, y4u)     # invalid trunc bound
-        y5 ~ T(dgamma(1, 1), mu, y5u)      # stochastically-invalid trunc bound
-        y6 ~ T(dgamma(1, 1), y6l, y6u)     # reversed trunc bound
+#        y4 ~ T(dgamma(1, 1), y4l, y4u)     # invalid trunc bound
+#        y5 ~ T(dgamma(1, 1), mu, y5u)      # stochastically-invalid trunc bound
+#        y6 ~ T(dgamma(1, 1), y6l, y6u)     # reversed trunc bound
     })
     
     consts <- list(y2u = 0.8, mu0 = rep(0, 2), prec0 = diag(rep(1,2)),

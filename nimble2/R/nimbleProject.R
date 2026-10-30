@@ -498,6 +498,7 @@ nimbleProjectClass <- R6::R6Class(
             instances = list(),
             compiled_generator = NULL,
             compiled_instances = list(),
+            newSetupEnvs = list(), # for new instances of an already compiled generator, until populated
             initialTypeInferenceDone = FALSE,
             nfProc = NULL
           )
@@ -506,17 +507,12 @@ nimbleProjectClass <- R6::R6Class(
       if(!is.null(obj)) {
         obj_label <- rlang::env_label(as.environment(obj))
         if (is.null(instances[[obj_label]])) {
-          if (!is.null(NFgens[[generatorName]]$compiled_generator)) {
-            # To be supported later by checking that types are compatible with the compiled class.
-            stop(paste0(
-              "A new instance of nimbleFunction generator ", generatorName,
-              " was provided, but that generator was already compiled in this project.",
-              " Adding new instances to a compiled nimbleFunction generator is not supported yet.",
-              " Use resetFunctions = TRUE to build new nimbleFunctions in this project."
-            ), call. = FALSE)
-          }
           register_object(obj)
           NFgens[[generatorName]]$instances[[obj_label]] <<- obj
+          if (!is.null(NFgens[[generatorName]]$compiled_generator)) {
+            # A new instance of an already compiled generator reuses the compiled class.
+            nimbleFunction_track_compiled_instance(generatorName, obj_label)
+          }
         }
       }
       obj
@@ -544,6 +540,65 @@ nimbleProjectClass <- R6::R6Class(
       NFgens[[generatorName]] <<- res$instance_records
       res$new_labels
     },
+    # Names of the setup outputs and new setup outputs of a nimbleFunction generator, by category.
+    # The categories come from the setup symbol table made when the generator was processed.
+    nimbleFunction_setupOutputCategories = function(generatorName) {
+      nfProc <- NFgens[[generatorName]]$nfProc
+      setupOutputNames <- nfProc$updatedSetupOutputNames
+      newSetupOutputNames <- nfProc$updatedNewSetupOutputNames
+      setupSymTab <- nfProc$setupSymTab
+      symbolClass <- \(names) vapply(names, \(x) class(setupSymTab$getSymbol(x))[1], character(1))
+      setupOutputSymbolClasses <- symbolClass(setupOutputNames)
+      isModel <- setupOutputSymbolClasses == "symbolModel"
+      isModelValues <- setupOutputSymbolClasses == "symbolModelValues"
+      isNF <- setupOutputSymbolClasses == "symbolNimbleFunction"
+      isNFL <- setupOutputSymbolClasses == "symbolNimbleFunctionList"
+      isNL <- setupOutputSymbolClasses == "symbolNimbleList"
+      isBasic <- !(isModel | isModelValues | isNF | isNFL | isNL)
+      # new setup outputs can't ever be nimbleFunctions or ...
+      newIsModel <- symbolClass(newSetupOutputNames) %in% c("symbolModel")
+      list(
+        basic = setupOutputNames[isBasic],
+        models = setupOutputNames[isModel],
+        modelValues = setupOutputNames[isModelValues],
+        NFs = setupOutputNames[isNF],
+        NFLs = setupOutputNames[isNFL],
+        NLs = setupOutputNames[isNL],
+        new_basic = newSetupOutputNames[!newIsModel],
+        new_models = newSetupOutputNames[newIsModel] # new setup outputs should never be models, so this scheme can be removed here.
+      )
+    },
+    # Handle a new instance of a nimbleFunction generator that was already compiled in
+    # this project. Its new setup code (already establised) is evaluated, and the objects among its
+    # setup outputs (models, nested nimbleFunctions, etc.) are added to the project, so that
+    # they (if new) will be instantiated and populated too. Type mismatches are not checked
+    # here and may appear as errors when the compiled object is populated.
+    nimbleFunction_track_compiled_instance = function(generatorName, obj_label) {
+      nfProc <- NFgens[[generatorName]]$nfProc
+      inst <- NFgens[[generatorName]]$instances[[obj_label]]
+      # As in nfProcessing's evalNewSetupLinesOneInstance.
+      newSetupEnv <- new.env(parent = inst)
+      eval(nfProc$newSetupCodeOneExpr, envir = newSetupEnv)
+      # Kept only until this instance is populated.
+      NFgens[[generatorName]]$newSetupEnvs[[obj_label]] <<- newSetupEnv
+      categories <- nimbleFunction_setupOutputCategories(generatorName)
+      for (x in categories$models) model_add(inst[[x]])
+      for (x in categories$modelValues) modelValues_add(inst[[x]])
+      for (x in categories$NLs) nimbleList_add(obj = inst[[x]])
+      for (x in categories$NFs) nimbleFunction_add(inst[[x]])
+      for (x in categories$NFLs) for (f in inst[[x]]$contentsList) nimbleFunction_add(f)
+      for (x in categories$new_models) model_add(newSetupEnv[[x]])
+      invisible(NULL)
+    },
+    # The environment holding the results of the new setup code for an instance.
+    # For an instance processed when its generator was compiled, that is held by the nfProc.
+    # For a later instance, it was made by nimbleFunction_track_compiled_instance.
+    nimbleFunction_newSetupEnv = function(generatorName, obj_label) {
+      env <- NFgens[[generatorName]]$newSetupEnvs[[obj_label]]
+      if (!is.null(env)) return(env)
+      nfProc <- NFgens[[generatorName]]$nfProc
+      nfProc$instances_newSetupEnvs[[match(obj_label, names(nfProc$instances))]]
+    },
     nimbleFunction_populate = function(generatorName, obj_labels) {
       instances <- NFgens[[generatorName]]$instances
       compiled_instances <- NFgens[[generatorName]]$compiled_instances
@@ -551,93 +606,63 @@ nimbleProjectClass <- R6::R6Class(
         return(invisible(NULL))
       }
       message("Determining setup output names during populate step may be incomplete.")
-      # Two categories of setup outputs:
-      setupOutputNames <- NFgens[[generatorName]]$nfProc$updatedSetupOutputNames # nf_getSetupOutputNames(NFgens[[generatorName]]$nfGenerator)
-      newSetupOutputNames <- NFgens[[generatorName]]$nfProc$updatedNewSetupOutputNames
-      
-      # Use setupSymTab to determine special types like models
-      setupSymTab <- NFgens[[generatorName]]$nfProc$setupSymTab
-      
-      setupOutputSymbolClasses <- setupOutputNames |>
-        lapply(\(x) class(setupSymTab$getSymbol(x))[1]) |>
-        unlist()
-      isModel <- setupOutputSymbolClasses == "symbolModel"
-      isModelValues <- setupOutputSymbolClasses == "symbolModelValues"
-      isNF <- setupOutputSymbolClasses == "symbolNimbleFunction"
-      isNFL <- setupOutputSymbolClasses == "symbolNimbleFunctionList"
-      isNL <- setupOutputSymbolClasses == "symbolNimbleList"
-      isBasic <- !(isModel | isModelValues | isNF | isNFL | isNL)
-      setupOutputNames_basic <- setupOutputNames[isBasic]
-      setupOutputNames_models <- setupOutputNames[isModel]
-      setupOutputNames_modelValues <- setupOutputNames[isModelValues]
-      setupOutputNames_NFs <- setupOutputNames[isNF]
-      setupOutputNames_NFLs <- setupOutputNames[isNFL]
-      setupOutputNames_NLs <- setupOutputNames[isNL]
-      
-      # new setup outputs can't ever be nimbleFunctions or ...
-      newSetupOutputSymbolClasses <- newSetupOutputNames |>
-        lapply(\(x) class(setupSymTab$getSymbol(x))[1]) |>
-        unlist()
-      isModel <- newSetupOutputSymbolClasses %in% c("symbolModel")
-      isBasic <- !isModel
-      newSetupOutputNames_basic <- newSetupOutputNames[isBasic]
-      newSetupOutputNames_models <- newSetupOutputNames[isModel] # new setup outputs should never be models, so this scheme can be removed here.
-      
+      categories <- nimbleFunction_setupOutputCategories(generatorName)
+
       for (obj_label in obj_labels) {
-        # i indexes the nfProc's instances, which are in the same order as instances.
-        i <- match(obj_label, names(instances))
-        inst <- instances[[i]]
-        # Collect setup outpus by category.
+        inst <- instances[[obj_label]]
+        # Collect setup outputs by category.
         # 1. basic outputs (numeric, character, logical, etc.)
-        setupOutputList <- setupOutputNames_basic |>
+        setupOutputList <- categories$basic |>
           lapply(\(x) inst[[x]]) |>
-          setNames(setupOutputNames_basic)
+          setNames(categories$basic)
         # 2. models
-        if(length(setupOutputNames_models)) 
+        if(length(categories$models))
           setupOutputList <- c(
             setupOutputList,
-            setupOutputNames_models |> lapply(\(x) model_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_models)
+            categories$models |> lapply(\(x) model_get_compiled_internal(inst[[x]])) |> setNames(categories$models)
           )
         # 3. modelValues
-        if(length(setupOutputNames_modelValues)) 
+        if(length(categories$modelValues))
           setupOutputList <- c(
             setupOutputList,
-            setupOutputNames_modelValues |> lapply(\(x) modelValues_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_modelValues)
+            categories$modelValues |> lapply(\(x) modelValues_get_compiled_internal(inst[[x]])) |> setNames(categories$modelValues)
           )
         # 4. nimbleLists
-        if(length(setupOutputNames_NLs)) {
+        if(length(categories$NLs)) {
           setupOutputList <- c(
             setupOutputList,
-            setupOutputNames_NLs |> lapply(\(x) nimbleList_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_NLs)
+            categories$NLs |> lapply(\(x) nimbleList_get_compiled_internal(inst[[x]])) |> setNames(categories$NLs)
           )
         }
         # 5. nimbleFunctions
-        if(length(setupOutputNames_NFs))
+        if(length(categories$NFs))
           setupOutputList <- c(
             setupOutputList,
-            setupOutputNames_NFs |> lapply(\(x) nimbleFunction_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_NFs)
+            categories$NFs |> lapply(\(x) nimbleFunction_get_compiled_internal(inst[[x]])) |> setNames(categories$NFs)
           )
         # 6. nimbleFunctionLists
-        if(length(setupOutputNames_NFLs)) {
+        if(length(categories$NFLs)) {
           setupOutputList <- c(
             setupOutputList,
-            setupOutputNames_NFLs |> lapply(\(x) nimbleFunctionList_get_compiled_internal(inst[[x]])) |> setNames(setupOutputNames_NFLs)
+            categories$NFLs |> lapply(\(x) nimbleFunctionList_get_compiled_internal(inst[[x]])) |> setNames(categories$NFLs)
           )
         }
         # new setup outputs:
-        inst_newSetupEnv <- NFgens[[generatorName]]$nfProc$instances_newSetupEnvs[[i]]
-        if(length(newSetupOutputNames_basic))
+        inst_newSetupEnv <- nimbleFunction_newSetupEnv(generatorName, obj_label)
+        if(length(categories$new_basic))
           setupOutputList <- c(
             setupOutputList,
-            newSetupOutputNames_basic |> lapply(\(x) inst_newSetupEnv[[x]]) |> setNames(newSetupOutputNames_basic)
+            categories$new_basic |> lapply(\(x) inst_newSetupEnv[[x]]) |> setNames(categories$new_basic)
           )
-        if(length(newSetupOutputNames_models))
+        if(length(categories$new_models))
           setupOutputList <- c(
             setupOutputList,
-            newSetupOutputNames_models |> lapply(\(x) model_get_compiled_internal(inst_newSetupEnv[[x]])) |> setNames(newSetupOutputNames_models)
+            categories$new_models |> lapply(\(x) model_get_compiled_internal(inst_newSetupEnv[[x]])) |> setNames(categories$new_models)
           )
         nCompiler::value(compiled_instances[[obj_label]]) <- setupOutputList
         nCompiler::method(compiled_instances[[obj_label]], "cpp_init_")()
+        # The new setup code results are not needed after populating.
+        NFgens[[generatorName]]$newSetupEnvs[[obj_label]] <<- NULL
       }
       NFgens[[generatorName]]$compiled_instances <<- compiled_instances
     },

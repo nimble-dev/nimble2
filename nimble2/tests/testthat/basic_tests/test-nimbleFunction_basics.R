@@ -17,11 +17,11 @@ test_that("nimbleFunction with setup code compiles and works", {
     check = FALSE
   )
   expect_false(is.nf(nf))
-  expect_true(is.nfGenerator(nf))
+  expect_true(nimble2:::is.nfGenerator(nf))
   nf1 <- nf()
   expect_true(is.nf(nf1))
   expect_equal(nf1$run(1:3), 2 * (1:3))
-  
+
   cnf <- compileNimble(nf1)
   expect_equal(cnf$run(2:4), 1:3 + 2:4)
   expect_equal(cnf$x, 1:3)
@@ -43,7 +43,7 @@ test_that("nimbleFunction containing another nimbleFunction compiles and works",
     },
     check = FALSE
   )
-  
+
   nf <- nimbleFunction(
     setup = function() {
       x <- 1:3
@@ -60,9 +60,9 @@ test_that("nimbleFunction containing another nimbleFunction compiles and works",
   expect_true(is.nf(nf1))
   expect_true(is.nf(nf1$my_inner))
   expect_equal(nf1$run(4:6), 2 * (1:3 + 4:6))
-  
+
   cnf <- compileNimble(nf1)
-    
+
   expect_equal(cnf$run(2:4), 2*(1:3 + 2:4))
   expect_equal(cnf$x, 1:3)
   cnf$x <- 11:13

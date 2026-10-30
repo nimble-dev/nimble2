@@ -120,7 +120,7 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
   lambdaDecl <- nCompiler:::nParse(as.name(paste0('[&]()')))
   nCompiler:::setArg(lambdaCode, 1, lambdaDecl)
   
-  tempName <- as.name(intermediateLabelMaker())
+  tempName <- as.name(nimble2:::intermediateLabelMaker())
   # Set the body to create the new object, using the
   #. chainedCall(construct_new_nClass( listDef)) piece from above
   lambdaBody <- nCompiler:::nParse(substitute({TEMP <- dummy; return(TEMP)}, 
@@ -182,8 +182,8 @@ nimble_nCompiler_opDefs <- list(
                               returnType = nCompiler:::symbolVoid$new())),
   makeNewNimbleListObject = list(
     matchDef = function(.LEFTSIDE, ...) {},
-    labelAbstractTypes = list(handler = "newNimbleList_LAT"),
-    cppOutput = list(handler = "newNimbleList_CPP")
+    labelAbstractTypes = list(handler = newNimbleList_LAT),
+    cppOutput = list(handler = newNimbleList_CPP)
   )
 )
 

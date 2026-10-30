@@ -59,7 +59,7 @@ test_that("basic nimCopy works", {
   nCompiler::value(comp$nf1$model, "z") <- matrix(1:25, nrow = 5)
   expect_equal(nCompiler::value(comp$nf1$model, "z"), matrix(1:25, nrow = 5))
   nCompiler::value(comp$nf1$model, "mu") <- 100.1
-  exoect_equal(nCompiler::value(comp$nf1$model, "mu"), 100.1)
+  expect_equal(nCompiler::value(comp$nf1$model, "mu"), 100.1)
   comp$nf1$go()
   expect_equal(comp$nf1$mv["mu", 1], 100.1)
   z_expected <- matrix(0, nrow = 5, ncol = 5)

@@ -85,17 +85,71 @@ test_that("a new nimbleFunction generator using an already compiled model uses t
   rm(comp, cb); gc()
 })
 
-# These error traps are expected to become unnecessary once all stages are
-# done, when new instances of compiled generators will be supported.
-test_that("a new instance of an already compiled nimbleFunction generator is trapped (temporary)", {
+test_that("a new instance of an already compiled nimbleFunction generator reuses the compiled class", {
   proj <- nimble2:::nimbleProjectClass$new()
   m <- make_test_model()
   obj <- foo(m, "mu")
   comp <- compileNimble(obj, m, project = proj)
-  obj_new <- foo(m, "mu")
-  expect_error(compileNimble(obj_new, project = proj), "not supported yet")
-  expect_error(compileNimble(obj, obj_new, project = proj), "not supported yet")
-  rm(comp); gc()
+  n0 <- nCompile_call_counter$n
+  # Same generator, a different node, so its own results from the new setup code.
+  obj2 <- foo(m, "y[2]")
+  comp2 <- compileNimble(obj2, project = proj)
+  expect_equal(nCompile_call_counter$n, n0) # nothing compiled
+  expect_equal(comp2$run(), 2)
+  expect_equal(comp$obj$run(), 0.5)
+  # New instances use the same compiled model. This is checked through the scalar mu
+  # because assigning a whole vector variable of a compiled model with value<- currently
+  # moves its memory, leaving pointers set up by cpp_init_ (e.g. for y[2]) invalid.
+  obj4 <- foo(m, "mu")
+  comp4 <- compileNimble(obj4, project = proj)
+  nCompiler::value(comp$m, "mu") <- 4
+  expect_equal(comp4$run(), 4)
+  expect_equal(comp$obj$run(), 4)
+  expect_identical(nimble2:::getNimbleProject(obj2), proj)
+  expect_identical(nimble2:::getNimbleProject(comp2), proj)
+  # Results of the new setup code are dropped after populating.
+  expect_length(proj$NFgens[[1]]$newSetupEnvs, 0)
+  rm(comp, comp2); gc()
+})
+
+test_that("new instances of compiled generators and new generators can be compiled together", {
+  proj <- nimble2:::nimbleProjectClass$new()
+  m <- make_test_model()
+  obj <- foo(m, "mu")
+  comp <- compileNimble(obj, m, project = proj)
+  n0 <- nCompile_call_counter$n
+  obj3 <- foo(m, "y[3]")   # new instance of a compiled generator
+  objb <- bar(m, "mu", 2)  # instance of a new generator
+  res <- compileNimble(obj3, objb, project = proj)
+  expect_equal(nCompile_call_counter$n, n0 + 1) # only bar is compiled
+  expect_equal(res$obj3$run(), 3)
+  expect_equal(res$objb$run(), 1)  # sets mu to 0.5 * 2
+  expect_equal(comp$obj$run(), 1)  # the same model
+  rm(comp, res); gc()
+})
+
+test_that("a new instance whose setup creates a new instance of a compiled generator reuses both classes", {
+  outer <- nimbleFunction(
+    setup = function(m_, node) {
+      my_inner <- foo(m_, node)
+    },
+    run = function() {
+      return(2 * my_inner$run())
+      returnType(double())
+    },
+    check = FALSE)
+  proj <- nimble2:::nimbleProjectClass$new()
+  m <- make_test_model()
+  o1 <- outer(m, "mu")
+  comp <- compileNimble(o1, m, project = proj)
+  expect_equal(comp$o1$run(), 1)
+  n0 <- nCompile_call_counter$n
+  o2 <- outer(m, "y[2]") # its setup creates a new instance of foo
+  comp2 <- compileNimble(o2, project = proj)
+  expect_equal(nCompile_call_counter$n, n0) # nothing compiled
+  expect_equal(comp2$run(), 4)
+  expect_equal(comp$o1$run(), 1)
+  rm(comp, comp2); gc()
 })
 
 test_that("resetFunctions = TRUE keeps the compiled model and recompiles nimbleFunctions from scratch", {
