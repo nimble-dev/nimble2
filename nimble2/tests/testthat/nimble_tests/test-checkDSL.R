@@ -1,5 +1,5 @@
 # Status:
-# 
+#
 # test1: identityMatrix removed. This is a final change.
 # test12: commented out until nimbleList implemented. Fix me.
 # line 260: commented out until nimbleFunctionVirtual implemented. Fix me.
@@ -8,7 +8,7 @@
 # line 391: commented out until nimbleFunctionVirtual is implemented.  Fix me.
 # line 509: warning message expectation is updated for nimble2. This is a final change.
 
-source(system.file(file.path("tests", "testthat", "test_utils.R"), 
+source(system.file(file.path("tests", "testthat", "test_utils.R"),
                    package = "nimble2"))
 
 nimbleOptions(enableDerivs = FALSE)
@@ -272,7 +272,7 @@ test_that("Test of DSL check of valid nimbleFunction using nimbleFunction from s
 #       foo = function() {}
 #     )
 #   )
-# 
+#
 #   nfextend <- nimbleFunction(
 #     contains = nf_base,
 #     setup = function() {},
@@ -285,7 +285,7 @@ test_that("Test of DSL check of valid nimbleFunction using nimbleFunction from s
 #       foo3 = function() {}
 #     )
 #   )
-# 
+#
 #   expect_silent(
 #     nf_more <- nimbleFunction(
 #       setup = function() {
@@ -333,7 +333,7 @@ test_that("Test of detection of nf methods in findMethods", {
 })
 
 # ## This test is disabled until we have
-# compile-time and run-time error-trapping of 
+# compile-time and run-time error-trapping of
 # negative indexing.
 # Also we need nimPrint
 # test_that("Handling of negative indexing in nimbleFunction code", {
@@ -343,14 +343,14 @@ test_that("Test of detection of nf methods in findMethods", {
 #     }
 #   )
 #   expect_error(cTest <- compileNimble(test), "negative indexing")
-# 
+#
 #   test <- nimbleFunction(
 #     run = function(x = double(2)) {
 #       for (i in 3:1) {}
 #     }
 #   )
 #   expect_error(cTest <- compileNimble(test), "negative indexing")
-# 
+#
 #   ## We don't check run-time negative indexing.
 #   test <- nimbleFunction(
 #     run = function(x = double(2), n1 = double(0), n2 = double(0)) {
@@ -440,8 +440,8 @@ test_that("nimbleFunctionVirtual works with abstract and non-abstract methods", 
 
   ## temporary changes working on virtual case for new compileNimble
   obj <- dNFa()
-  comp <- compileNimble(obj)  
-  
+  comp <- compileNimble(obj)
+
   dNFb <- nimbleFunction(
     contains = baseNF,
     setup = TRUE,
@@ -483,7 +483,7 @@ test_that("nimbleFunctionVirtual works with abstract and non-abstract methods", 
     )
   )
   expect_identical(res, character())
-  
+
   useBase <- nimbleFunction(
     setup = function() {
       NFlist <- nimbleFunctionList(baseNF)
@@ -520,7 +520,7 @@ test_that("Missing variables in nf code cause error (not warning)", {
   )
   #expect_error(compileNimble(test1), "is not available")
   expect_error(compileNimble(test1), "has not been created yet")
-  
+
   test2 <- nimbleFunction(
     run = function() {
       a <- 7

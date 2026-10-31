@@ -697,9 +697,9 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
       inherits(first_inst[[1]], "varRangeClass")) {
         return(symbolVarRangeList$new(name = name))
   }
-  # makeInstrList returns an Rlist_Rinstr (plain R lists mimicking instr_nClass objects),
-  # which the C++ nList fills when the setup outputs are populated.
-  if(inherits(first_inst, c("nList", "Rlist_Rinstr"))) {
+  # makeInstrList returns an RinstrList (a plain R list mimicking instrList_nClass),
+  # which the C++ instrList_nClass fills when the setup outputs are populated.
+  if(inherits(first_inst, c("RinstrList", "instrList_nClass"))) {
     return(symbolInstrList$new(name = name))
   }
   # if (inherits(instances[[1]][[name]], "ADproxyModelClass")) {

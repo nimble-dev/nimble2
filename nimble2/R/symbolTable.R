@@ -176,7 +176,7 @@ symbolInstrList <-
         # In this case, resolveSym won't do because we want to see the nList as a declaration.
         # build_nCgenerator_impl checks any symbols in the nimbleFunction symbolTable and
         # replaced with any declaration fields like the following:
-        declaration = "nCompiler::nList(nimbleModel:::instr_nClass())",
+        declaration = "nimbleModel:::instrList_nClass()",
         initialize = function(...) {
           super$initialize(
             ...

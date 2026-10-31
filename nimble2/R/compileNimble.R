@@ -1,33 +1,31 @@
 BROWSE_COMPILE_NIMBLE <- FALSE
 
 make_model_calls_methods <- function(code, symTab, auxEnv, info) {
-  # convert model_calculate(model, instr) to model$calculate(instr)
+  # convert model_calculate(model, instrList) to model$calculate(instrList),
+  # model_calculate_indexed(model, instrList, i) to model$calculate_indexed(instrList, i), etc.
+  # nimbleModel's opDefs for modelBase_nClass then turn model$calculate(...) into
+  # model$calculate_impl(...) etc. in labelAbstractTypes.
   method <- switch(code$name,
-    model_calculate = "calculate_impl",
-    model_calculateDiff = "calculateDiff_impl",
-    model_simulate = "simulate_impl",
-    model_getLogProb = "getLogProb_impl",
-    model_getBound = "getBound_impl",
-    model_getParam = "getParam_impl"
+    model_calculate = "calculate",
+    model_calculateDiff = "calculateDiff",
+    model_simulate = "simulate",
+    model_getLogProb = "getLogProb",
+    model_getBound = "getBound",
+    model_getParam = "getParam",
+    model_calculate_indexed = "calculate_indexed",
+    model_calculateDiff_indexed = "calculateDiff_indexed",
+    model_simulate_indexed = "simulate_indexed",
+    model_getLogProb_indexed = "getLogProb_indexed",
+    model_getBound_indexed = "getBound_indexed",
+    model_getParam_indexed = "getParam_indexed",
+    stop("In make_model_calls_methods, unknown model call ", code$name)
   )
-  if(length(code$args) == 2) {
-    new_code <- substitute(
-      MODEL$METHOD(INSTRLISTNAME),
-      list(MODEL = as.name(code$args[[1]]$name),
-          METHOD = as.name(method),
-          INSTRLISTNAME = as.name(code$args[[2]]$name))
-    )
-  } else if(length(code$args) == 3) {
-    new_code <- substitute(
-      MODEL$METHOD(INSTRNAME, PARAMIDNAME),
-      list(MODEL = as.name(code$args[[1]]$name),
-          METHOD = as.name(method),
-          # From getParam or getBound, INSTR will be an expression like somename_instrList[[1]]
-          # so we need to not just use the op name but get the expression
-          INSTRNAME = parse(text = nCompiler::nDeparse(code$args[[2]]), keep.source=FALSE)[[1]], # as.name(code$args[[2]]$name),
-          PARAMIDNAME = as.name(code$args[[3]]$name))
-    )
-  } else stop("In make_model_calls_methods, expected exactly 2 or 3 arguments.")
+  # Arguments after the model can be expressions (e.g. an index i + 1), so deparse them.
+  args <- lapply(code$args[-1], \(arg) parse(text = nCompiler::nDeparse(arg), keep.source = FALSE)[[1]])
+  new_code <- as.call(c(
+    list(call("$", as.name(code$args[[1]]$name), as.name(method))),
+    args
+  ))
   new_expr <- nCompiler::nParse(new_code)
   nCompiler:::replaceArgInCaller(code, new_expr)
   nCompiler:::compile_normalizeCalls(new_expr, symTab, auxEnv)
@@ -88,11 +86,12 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
                             overloadDefs = NC_info$inheritInfo$overloadDefs,
                             NCgenerator = NCgen)
   
-  newSym <- nCompiler:::symbolNF$new(name = classname,
-                          returnSym = returnSym)
-  # 2. Change to chainedCall(construct_new_nClass( listDef))
+  # 2. Change to construct_new_nClass(), as nCompiler does for Gen$new() (see MethodCall in
+  #    nCompiler's labelAbstractTypes). nClass_constructor generates nClass_builder<classname>()(args),
+  #    taking the class name from aux$cpp_classname, so the listDef arg is removed.
   code$name <- 'construct_new_nClass'
-  code$type <- newSym
+  code$aux$cpp_classname <- classname
+  code$type <- returnSym
   # The careful way to extract args, removing them from the AST
   setterArgs <- list()
   numSetterLines <- 0
@@ -104,14 +103,12 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
       setterArgs[[i-1]] <- nCompiler:::removeArg(code, i)
     }
   }
-  
-  newCode <- nCompiler:::wrapExprClassOperator(code, "chainedCall")
-  # now newCode is in the AST where code was
-  newCode$type <- returnSym
+  nCompiler:::removeArg(code, 1) # the listDef
+  newCode <- code
 
   # 3. Build a lambda function
   lambdaCodeOp <- nCompiler:::nParse(quote(chainedCall(LambdaFun_(decl, def))))
-  #.   Place it in the AST in place of chainedCall(construct_new_nClass( listDef))
+  #.   Place it in the AST in place of construct_new_nClass()
   nCompiler:::replaceArgInCaller(newCode, lambdaCodeOp)
   lambdaCodeOp$type <- returnSym
 
@@ -122,7 +119,7 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
   
   tempName <- as.name(nimble2:::intermediateLabelMaker())
   # Set the body to create the new object, using the
-  #. chainedCall(construct_new_nClass( listDef)) piece from above
+  #. construct_new_nClass() piece from above
   lambdaBody <- nCompiler:::nParse(substitute({TEMP <- dummy; return(TEMP)}, 
                                               list(TEMP = tempName)))
  # lambdaBody <- nCompiler:::nParse(quote(return(dummy)))
@@ -171,8 +168,14 @@ nimble_nCompiler_opDefs <- list(
   model_calculateDiff = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_simulate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getParam = list(matchDef = function(model, instr, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
-  model_getBound = list(matchDef = function(model, instr, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getBound = list(matchDef = function(model, instr, boundID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getLogProb = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_calculate_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_calculateDiff_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_simulate_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getLogProb_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getParam_indexed = list(matchDef = function(model, instrList, i, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getBound_indexed = list(matchDef = function(model, instrList, i, boundID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   getOrSetValues_ = list(matchDef = function(multiCopier) {},
     labelAbstractTypes = list(handler = getOrSetValues_LAT)),
   nimCopy_ = list(
