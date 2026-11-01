@@ -1,0 +1,100 @@
+name: Run tests
+# Manually triggered from the Actions tab.
+# Each job runs one test subset (a subdirectory of basic_tests or nimble_tests)
+# via the reusable workflow run-test-subset.yaml.
+# When adding a test subdirectory, add a job for it here (check-test-coverage will fail otherwise).
+
+on:
+  workflow_dispatch:
+    inputs:
+      nCompiler_ref:
+        description: 'nCompiler branch, tag, or SHA'
+        required: true
+        type: string
+        default: 'main'
+      nimbleModel_ref:
+        description: 'nimbleModel branch, tag, or SHA'
+        required: true
+        type: string
+        default: 'main'
+      run_all:
+        description: 'Run all tests'
+        type: boolean
+        default: false
+      run_basic_nimbleFunction:
+        description: 'basic_tests/nimbleFunction'
+        type: boolean
+        default: true
+      run_basic_model:
+        description: 'basic_tests/model'
+        type: boolean
+        default: true
+      run_basic_project:
+        description: 'basic_tests/project'
+        type: boolean
+        default: true
+      run_nimble_core:
+        description: 'nimble_tests/core'
+        type: boolean
+        default: false
+      run_nimble_model:
+        description: 'nimble_tests/model'
+        type: boolean
+        default: false
+
+jobs:
+  check-test-coverage:
+    # Fail if any directory containing test files is not referenced in this workflow.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that every test directory has a job
+        run: |
+          status=0
+          for d in $(find nimble2/tests/testthat -name 'test-*.R' -exec dirname {} \; | sort -u); do
+            if ! grep -q "test_dirs: .*$d\( \|$\)" .github/workflows/test-all.yaml; then
+              echo "::error::$d contains tests but has no job in test-all.yaml"
+              status=1
+            fi
+          done
+          exit $status
+
+  basic-nimbleFunction:
+    if: inputs.run_all || inputs.run_basic_nimbleFunction
+    uses: ./.github/workflows/run-test-subset.yaml
+    with:
+      test_dirs: nimble2/tests/testthat/basic_tests/nimbleFunction
+      nCompiler_ref: ${{ inputs.nCompiler_ref }}
+      nimbleModel_ref: ${{ inputs.nimbleModel_ref }}
+
+  basic-model:
+    if: inputs.run_all || inputs.run_basic_model
+    uses: ./.github/workflows/run-test-subset.yaml
+    with:
+      test_dirs: nimble2/tests/testthat/basic_tests/model
+      nCompiler_ref: ${{ inputs.nCompiler_ref }}
+      nimbleModel_ref: ${{ inputs.nimbleModel_ref }}
+
+  basic-project:
+    if: inputs.run_all || inputs.run_basic_project
+    uses: ./.github/workflows/run-test-subset.yaml
+    with:
+      test_dirs: nimble2/tests/testthat/basic_tests/project
+      nCompiler_ref: ${{ inputs.nCompiler_ref }}
+      nimbleModel_ref: ${{ inputs.nimbleModel_ref }}
+
+  nimble-core:
+    if: inputs.run_all || inputs.run_nimble_core
+    uses: ./.github/workflows/run-test-subset.yaml
+    with:
+      test_dirs: nimble2/tests/testthat/nimble_tests/core
+      nCompiler_ref: ${{ inputs.nCompiler_ref }}
+      nimbleModel_ref: ${{ inputs.nimbleModel_ref }}
+
+  nimble-model:
+    if: inputs.run_all || inputs.run_nimble_model
+    uses: ./.github/workflows/run-test-subset.yaml
+    with:
+      test_dirs: nimble2/tests/testthat/nimble_tests/model
+      nCompiler_ref: ${{ inputs.nCompiler_ref }}
+      nimbleModel_ref: ${{ inputs.nimbleModel_ref }}

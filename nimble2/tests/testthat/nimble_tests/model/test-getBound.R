@@ -1,5 +1,5 @@
 # This file is copied from nimble but has not been worked on in nimble2.
-source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble'))
+source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble2'))
 
 RwarnLevel <- options('warn')$warn
 options(warn = 1)
@@ -15,7 +15,7 @@ test_that("building of model with initial value issues in bounds", {
 #        y3 ~ T(dnorm(0,1), exp(y2l), y3u)       # constant trunc bounds
         y2l ~ dnorm(0,1)
         y3u <- 15*cc
-        mu ~ dnorm(0, 1)                 
+        mu ~ dnorm(0, 1)
         sig ~ dunif(0, 5)
         b ~ dunif(a,d)                   # non-constant unif bounds
         a ~ dunif(al,4)                  # constant unif bounds
@@ -27,7 +27,7 @@ test_that("building of model with initial value issues in bounds", {
 #        y5 ~ T(dgamma(1, 1), mu, y5u)      # stochastically-invalid trunc bound
 #        y6 ~ T(dgamma(1, 1), y6l, y6u)     # reversed trunc bound
     })
-    
+
     consts <- list(y2u = 0.8, mu0 = rep(0, 2), prec0 = diag(rep(1,2)),
                    y4l = -2, y4u = 5, y5u = 0.5, y6l = 2, y6u = 1,
                    al = 0.1, dl = 0.15)
@@ -37,7 +37,7 @@ test_that("building of model with initial value issues in bounds", {
                                     constants = consts,
                                     data = list(y1 = 0, y2 = 0, y3 = 1, y4 = 1, y5 = 1, y6 = 1)))
     cm <- compileNimble(m)
-    
+
     test <- nimbleFunction(
         setup = function(model, node, bnd) {},
         run = function() {
@@ -69,7 +69,7 @@ test_that("building of model with initial value issues in bounds", {
     test_getBound(m, cm, test, 'y5', 'upper', consts$y5u, "stochastically-invalid constant upper truncation bound")
     test_getBound(m, cm, test, 'y6', 'lower', consts$y6l, "reversed constant lower truncation bound")
     test_getBound(m, cm, test, 'y6', 'upper', consts$y6u, "reversed constant upper truncation bound")
-    
+
                                         # test after a simulate
     set.seed(1)
     simulate(m)
@@ -118,7 +118,7 @@ test_that('getBound, user-defined integer-valued', {
             returnType(double(0))
             return(0)
         })
-    
+
     temporarilyAssignInGlobalEnv(dtest)
     temporarilyAssignInGlobalEnv(rtest)
     temporarilyAssignInGlobalEnv(qtest)

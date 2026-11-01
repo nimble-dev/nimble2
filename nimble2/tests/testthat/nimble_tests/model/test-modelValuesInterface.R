@@ -1,4 +1,4 @@
-source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble'))
+source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble2'))
 
 RwarnLevel <- options('warn')$warn
 options(warn = 1)
@@ -96,16 +96,16 @@ test_that("as.matrix and matrix2mv work for modelValues", {
 #         for(k in 1:4)
 #           z[i, j, k ] ~ dnorm(0,1)
 #   })
-# 
+#
 #   m <- nimbleModel::nimbleModel(mc)
 #   buildMCMC(m)
-# 
+#
 #   ## uncompiled
 #   mcmc$run(30)
 #   samples <- as.matrix(mcmc$mvSamples)
-# 
+#
 #   test <- as.list(mcmc$mvSamples)
-# 
+#
 #   expect_identical(unname(samples[,1:3]), test$x)
 #   expect_identical(unname(samples[,4:6]), test$y[,1:3,1])
 #   expect_identical(unname(samples[,7:9]), test$y[,1:3,2])
@@ -115,22 +115,22 @@ test_that("as.matrix and matrix2mv work for modelValues", {
 #   expect_identical(unname(samples[,19:21]), test$z[,1:3,2,2])
 #   expect_identical(unname(samples[,22:24]), test$z[,1:3,1,3])
 #   expect_identical(unname(samples[,25:27]), test$z[,1:3,2,3])
-# 
+#
 #   test <- as.list(mcmc$mvSamples, 'y')
-# 
+#
 #   expect_identical(names(test), 'y')
 #   expect_identical(unname(samples[,4:6]), test$y[,1:3,1])
 #   expect_identical(unname(samples[,7:9]), test$y[,1:3,2])
-# 
+#
 #   ## compiled
 #   cm <- compileNimble(m)
 #   cmcmc <- compileNimble(mcmc, project = m)
-# 
+#
 #   cmcmc$run(30)
 #   samples <- as.matrix(cmcmc$mvSamples)
-# 
+#
 #   test <- as.list(cmcmc$mvSamples)
-# 
+#
 #   expect_identical(unname(samples[,1:3]), test$x)
 #   expect_identical(unname(samples[,4:6]), test$y[,1:3,1])
 #   expect_identical(unname(samples[,7:9]), test$y[,1:3,2])
@@ -140,9 +140,9 @@ test_that("as.matrix and matrix2mv work for modelValues", {
 #   expect_identical(unname(samples[,19:21]), test$z[,1:3,2,2])
 #   expect_identical(unname(samples[,22:24]), test$z[,1:3,1,3])
 #   expect_identical(unname(samples[,25:27]), test$z[,1:3,2,3])
-# 
+#
 #   test <- as.list(cmcmc$mvSamples, 'y')
-# 
+#
 #   expect_identical(names(test), 'y')
 #   expect_identical(unname(samples[,4:6]), test$y[,1:3,1])
 #   expect_identical(unname(samples[,7:9]), test$y[,1:3,2])

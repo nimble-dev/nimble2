@@ -1,4 +1,4 @@
-source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble'))
+source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble2'))
 
 RwarnLevel <- options('warn')$warn
 options(warn = 1)
