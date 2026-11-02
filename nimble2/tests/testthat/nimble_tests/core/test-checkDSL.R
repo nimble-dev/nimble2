@@ -393,6 +393,7 @@ test_that("Test of error trapping for reduction functions", {
 
 # ## This test is commented out until nimbleFunctionVirtual is supported.
 test_that("nimbleFunctionVirtual works with abstract and non-abstract methods", {
+  skip("this test needs cat() implemented in the DSL")
   # methods in nimbleFunctionVirtual are by default *abstract*, which means they
   # are declared in the base class but are not defined. (In C++ they have "=0" at the
   # end of the declaration.)  Hence they can't be called.
