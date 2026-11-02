@@ -251,46 +251,54 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   if (length(units) == 0) stop("No objects for compilation provided")
 
   ## 2. Get project or make new project
-  # reset = TRUE: compile the inputs in a new project. Objects already registered
-  #   to another project are moved to the new one.
-  # project provided: use it (it can be a project or any object registered to one).
-  # Otherwise: use the project that the inputs belong to, if any. It is an error
-  #   if the inputs belong to different projects. Otherwise use the nimbleProject
-  #   option if set, or else a new project.
+  # A project is one independent compilation: within it, each object has one compiled
+  # counterpart, but the same object can be compiled in other projects too.
+  # To compile objects together with objects already compiled, provide the project argument.
+  # reset = TRUE: compile the inputs in a new project.
+  # project provided: use it (it can be a project or any object compiled in one, in
+  #   which case it is the project that most recently compiled the object).
+  # Otherwise: use the nimbleProject option if set, or else a new project.
+  # With nimbleOptions(legacy_nimble = TRUE), as in nimble, models already compiled are
+  #   shared: if models among the inputs or used in their setup code were compiled,
+  #   the project that most recently compiled them is used, even if the project argument
+  #   is a different project (with a note).
   if (reset) {
     if (!missing(project)) {
       stop("reset = TRUE compiles the inputs in a new project, so the project argument should not be provided.", call. = FALSE)
     }
     project <- nimbleProjectClass$new(name = projectName)
-    project$replace_registrations <- TRUE
-    on.exit(project$replace_registrations <- FALSE, add = TRUE)
-  } else if (missing(project)) {
-    units_projects <- unique_nimbleProjects(lapply(units, nimbleProject_registry_lookup))
-    if (length(units_projects) > 1) {
-      stop("The objects provided for compilation belong to different nimbleProjects, so they can't be compiled together.", call. = FALSE)
-    }
-    if (length(units_projects) == 1) {
-      project <- units_projects[[1]]
-    } else if (!is.null(getNimbleOption("nimbleProject"))) {
-      project <- getNimbleOption("nimbleProject")
+  } else {
+    if (!missing(project)) {
+      project <- getNimbleProject(project, TRUE)
     } else {
-      project <- nimbleProjectClass$new(name = projectName) # is dirName needed?
+      project <- NULL
     }
-
-    ## Check for uncompiled models.
-    if (!any(sapply(units, is, "RmodelBaseClass"))) {
-      mcmcUnits <- which(sapply(units, class) == "MCMC")
-      if (any(sapply(mcmcUnits, function(idx) {
-        class(units[[idx]]$model$CobjectInterface) == "uninitializedField"
-      }))) {
-        stop("compileNimble: The model associated with an MCMC is not compiled. Please compile the model first.")
+    if (isLegacyNimble()) {
+      models_projects <- nimbleProject_registry_lookup_models(units)
+      if (length(models_projects) > 1) {
+        stop(paste0(
+          "With nimbleOptions(legacy_nimble = TRUE), models already compiled are shared, but models provided for compilation,",
+          " or used in their setup code, were compiled in different nimbleProjects, so they can't be compiled together."
+        ), call. = FALSE)
+      }
+      if (length(models_projects) == 1) {
+        if (!is.null(project) && !identical(project, models_projects[[1]])) {
+          messageIfVerbose(paste0(
+            "  [Note] Because nimbleOptions(legacy_nimble = TRUE), compiling in the project where models provided\n",
+            "         (or used in setup code) were already compiled, instead of the project argument."
+          ))
+        }
+        project <- models_projects[[1]]
       }
     }
-  } else {
-    project <- getNimbleProject(project, TRUE)
+    if (is.null(project)) {
+      if (!is.null(getNimbleOption("nimbleProject"))) {
+        project <- getNimbleOption("nimbleProject")
+      } else {
+        project <- nimbleProjectClass$new(name = projectName) # is dirName needed?
+      }
+    }
   }
-  # An input registered to a different project than the one chosen is caught when
-  # the project tracks it (see nimbleProject_registry_add).
   if (resetFunctions) project$resetFunctions()
 
   for (i in names(controlDefaults)) {
@@ -448,8 +456,9 @@ getNimbleTypes <- function(units) {
 }
 
 # Return the nimbleProject associated with project, which can be a nimbleProject
-# or any object registered to one: a model, nimbleFunction instance, modelValues
+# or any object compiled in one: a model, nimbleFunction instance, modelValues
 # or nimbleList object, or a compiled counterpart of one of these.
+# For an uncompiled object, this is the project that most recently compiled it.
 getNimbleProject <- function(project, stopOnNull = FALSE) {
   if (inherits(project, "nimbleProjectClass")) {
     return(project)
@@ -460,16 +469,6 @@ getNimbleProject <- function(project, stopOnNull = FALSE) {
       "Cannot determine a nimbleProject from the project argument. It should be a nimbleProject,",
       " or a model or nimbleFunction (or compiled version of one) that has already been compiled."
     ), call. = FALSE)
-  }
-  ans
-}
-
-# Given a list of projects (some possibly NULL), return a list of the distinct non-NULL ones.
-unique_nimbleProjects <- function(projects) {
-  ans <- list()
-  for (project in projects) {
-    if (is.null(project)) next
-    if (!any(vapply(ans, \(x) identical(x, project), logical(1)))) ans <- c(ans, list(project))
   }
   ans
 }

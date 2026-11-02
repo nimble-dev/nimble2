@@ -10,6 +10,10 @@
 
 source(system.file(file.path("tests", "testthat", "test_utils.R"),
                    package = "nimble2"))
+# Tests copied from nimble run with legacy_nimble = TRUE, so nimble2 follows nimble's behavior where they differ.
+legacyNimbleSetting <- nimbleOptions('legacy_nimble')
+nimbleOptions(legacy_nimble = TRUE)
+on.exit(nimbleOptions(legacy_nimble = legacyNimbleSetting), add = TRUE)
 
 nimbleOptions(enableDerivs = FALSE)
 

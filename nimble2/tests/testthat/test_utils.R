@@ -1250,8 +1250,12 @@ test_getParam <- function(distCall, dist = NULL) {
 test_getBound <- function(model, cmodel, test, node, bnd, truth, info) {
     test_that(paste0("getBound test: ", info), {
         rtest <- test(model, node, bnd)
-        project <- nimble:::nimbleProjectClass(NULL, name = 'foo')
-        ctest <- compileNimble(rtest, project = project)
+        ## nimble2: compile in the model's project, so the compiled model is shared.
+        ## The original code (below) compiled in a new project. That works in nimble, which shares
+        ## the compiled model across projects, and in nimble2 only with legacy_nimble = TRUE.
+        ## project <- nimble:::nimbleProjectClass(NULL, name = 'foo')
+        ## ctest <- compileNimble(rtest, project = project)
+        ctest <- compileNimble(rtest, project = model)
 
         out1 <- model$getBound(node, bnd)
         out2 <- getBound(model, node, bnd)

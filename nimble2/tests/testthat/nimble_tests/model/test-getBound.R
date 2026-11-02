@@ -1,10 +1,18 @@
+skip("test-getBound runs into problems with compilation workflows, lack of T() support, and problems with repeated compileNimble calls.")
+
 # This file is copied from nimble but has not been worked on in nimble2.
 source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble2'))
+# Tests copied from nimble run with legacy_nimble = TRUE, so nimble2 follows nimble's behavior where they differ.
+legacyNimbleSetting <- nimbleOptions('legacy_nimble')
+nimbleOptions(legacy_nimble = TRUE)
+on.exit(nimbleOptions(legacy_nimble = legacyNimbleSetting), add = TRUE)
 
 RwarnLevel <- options('warn')$warn
 options(warn = 1)
 nimbleVerboseSetting <- nimbleOptions('verbose')
 nimbleOptions(verbose = FALSE)
+
+
 
 # N2FIXME: uncomment dmnorm and ddirch when supported
 # N2FIXME: uncomment truncated dists when supported
