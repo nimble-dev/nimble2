@@ -1,11 +1,15 @@
 #' @export
 #' @importFrom nimbleModel values
-values <- function(model, nodes) {
-  nimbleModel::values(model, nodes)
-}
+nimbleModel::values
 
 #' @export
 #' @importFrom nimbleModel `values<-`
-`values<-` <- function(model, nodes, value) {
-  nimbleModel::`values<-`(model, nodes, value)
-}
+nimbleModel::`values<-`
+
+#' @export
+#' @importFrom nimbleModel modelValuesConf
+nimbleModel::modelValuesConf
+
+#' @export
+#' @importFrom nimbleModel modelValues
+nimbleModel::modelValues
