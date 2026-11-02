@@ -30,6 +30,7 @@ is.nf <- function(f, inputIsName = FALSE, where = -1) {
     existsFunctionEnvVar(f, "nfRefClassObject"))
 }
 
+#' @export
 is.nfGenerator <- function(f, inputIsName = FALSE, where = -1) {
   if (inputIsName) f <- get(f, pos = where)
   return(is.function(f) &&

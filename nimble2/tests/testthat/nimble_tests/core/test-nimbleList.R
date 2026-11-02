@@ -7,7 +7,7 @@
 ## 5) nimbleListDef is created outside of the nimbleFunction, nimbleListDef$new() used to create new nimbleList outside of the nimbleFunction,
 ##    nimbleList passed as argument to nimbleFunction
 
-source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble'))
+source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble2'))
 
 RwarnLevel <- options('warn')$warn
 options(warn = 1)
@@ -39,7 +39,7 @@ test_that("nimbleList test 1: return objects are nimbleLists", {
   RnimbleList <- testInst$run()
   CtestInst <- compileNimble(testInst)
   CnimbleList <- CtestInst$run()
-  
+
   ## test for correct values of R nimbleList
   expect_identical(RnimbleList$nlScalar, 1)
   expect_identical(RnimbleList$nlVector, c(1, 1))
@@ -71,12 +71,12 @@ test_that("nimbleList test 2: return objects are nimbleLists", {
       return(newList2)
     }
   )
-  
+
   testInst <- nlTestFunc2()
   RnimbleList <- testInst$run()
   CtestInst <- compileNimble(testInst, control = list(debug =  F))
   CnimbleList <- CtestInst$run()
-  
+
   ## test for correct values of R nimbleList
   expect_identical(RnimbleList$nlScalar, 2)
   ## test for identical values of R and C nimbleLists
@@ -101,88 +101,87 @@ test_that("nimbleList test 3: return objects are nimbleLists", {
       return(setupList3)
     }
   )
-  
+
   testInst <- nlTestFunc3()
   RnimbleList <- testInst$run()
   CtestInst <- compileNimble(testInst)
   CnimbleList <- CtestInst$run()
-  
+
   ## test for correct values of R nimbleList
   expect_identical(RnimbleList$nlCharacter, "hello world")
   ## test for identical values of R and C nimbleLists
   expect_identical(RnimbleList$nlCharacter, CnimbleList$nlCharacter)
   expect_identical(CnimbleList$nlCharacter, CtestInst$setupList3$nlCharacter)
-  
+
   expect_identical(is.nl(RnimbleList), TRUE)
   expect_identical(is.nl(CnimbleList), TRUE)
   # expect_identical(is.nl(CtestInst$setupList3), TRUE)  is.nl gives FALSE here, not sure if should be corrected
 })
 
-# # NL2FIXME (character vector needed)
-# ########
-# ## Test of using a character vector in a nimbleList.  nimbleList created in setup code
-# ########
-# test_that("nimbleList test 3a: return objects are nimbleLists", {
-#   nlTestFunc3a <- nimbleFunction(
-#     setup = function(){
-#       testTypes <- list(nimbleType(name = 'nlCharacters', type = 'character', dim = 1))
-#       testListDef3a <- nimbleList(testTypes)
-#       setupList3a <- testListDef3a$new(nlCharacters = c("hello", "world"))
-#     },
-#     run = function(){
-#       returnType(testListDef3a())
-#       return(setupList3a)
-#     }
-#   )
-#   
-#   testInst <- nlTestFunc3a()
-#   RnimbleList <- testInst$run()
-#   CtestInst <- compileNimble(testInst)
-#   CnimbleList <- CtestInst$run()
-#   
-#   ## test for correct values of R nimbleList
-#   expect_identical(RnimbleList$nlCharacters[1], "hello")
-#   expect_identical(RnimbleList$nlCharacters[2], "world")
-#   ## test for identical values of R and C nimbleLists
-#   expect_identical(RnimbleList$nlCharacters, CnimbleList$nlCharacters)
-#   expect_identical(CnimbleList$nlCharacters, CtestInst$setupList3a$nlCharacters)
-#   expect_identical(nimble:::is.nl(RnimbleList), TRUE)
-#   expect_identical(is.nl(CnimbleList), TRUE)
-# })
+# (works in nimble2)
+########
+## Test of using a character vector in a nimbleList.  nimbleList created in setup code
+########
+test_that("nimbleList test 3a: return objects are nimbleLists", {
+  nlTestFunc3a <- nimbleFunction(
+    setup = function(){
+      testTypes <- list(nimbleType(name = 'nlCharacters', type = 'character', dim = 1))
+      testListDef3a <- nimbleList(testTypes)
+      setupList3a <- testListDef3a$new(nlCharacters = c("hello", "world"))
+    },
+    run = function(){
+      returnType(testListDef3a())
+      return(setupList3a)
+    }
+  )
 
-# # NL2FIXME (character vector needed)
-# ######## 
-# ## Test of using a character vector in a nimbleList.  nimbleList created in run code
-# ########
-# test_that("nimbleList test 3b: return objects are nimbleLists", {
-#   nlTestFunc3b <- nimbleFunction(
-#     setup = function(){
-#       testTypes <- list(nimbleType(name = 'nlCharacters', type = 'character', dim = 1))
-#       testListDef3b <- nimbleList(testTypes)
-#       charVec <- c('hello', 'world')
-#     },
-#     run = function(){
-#       runList3b <- testListDef3b$new(nlCharacters = charVec)
-#       returnType(testListDef3b())
-#       return(runList3b)
-#     }
-#   )
-#   
-#   testInst <- nlTestFunc3b()
-#   RnimbleList <- testInst$run()
-#   CtestInst <- compileNimble(testInst)
-#   CnimbleList <- CtestInst$run()
-#   
-#   ## test for correct values of R nimbleList
-#   expect_identical(RnimbleList$nlCharacters[1], "hello")
-#   expect_identical(RnimbleList$nlCharacters[2], "world")
-#   ## test for identical values of R and C nimbleLists
-#   expect_identical(RnimbleList$nlCharacters, CnimbleList$nlCharacters)
-#   expect_identical(nimble:::is.nl(RnimbleList), TRUE)
-#   expect_identical(is.nl(CnimbleList), TRUE)
-#   ## expect_identical(is.nl(CtestInst$setupList3), TRUE)  is.nl gives FALSE here, not sure if should be corrected
-# })
+  testInst <- nlTestFunc3a()
+  RnimbleList <- testInst$run()
+  CtestInst <- compileNimble(testInst)
+  CnimbleList <- CtestInst$run()
 
+  ## test for correct values of R nimbleList
+  expect_identical(RnimbleList$nlCharacters[1], "hello")
+  expect_identical(RnimbleList$nlCharacters[2], "world")
+  ## test for identical values of R and C nimbleLists
+  expect_identical(RnimbleList$nlCharacters, CnimbleList$nlCharacters)
+  expect_identical(CnimbleList$nlCharacters, CtestInst$setupList3a$nlCharacters)
+  expect_identical(is.nl(RnimbleList), TRUE)
+  expect_identical(is.nl(CnimbleList), TRUE)
+})
+
+# (works in nimble2)
+########
+## Test of using a character vector in a nimbleList.  nimbleList created in run code
+########
+test_that("nimbleList test 3b: return objects are nimbleLists", {
+  nlTestFunc3b <- nimbleFunction(
+    setup = function(){
+      testTypes <- list(nimbleType(name = 'nlCharacters', type = 'character', dim = 1))
+      testListDef3b <- nimbleList(testTypes)
+      charVec <- c('hello', 'world')
+    },
+    run = function(){
+      runList3b <- testListDef3b$new(nlCharacters = charVec)
+      returnType(testListDef3b())
+      return(runList3b)
+    }
+  )
+
+  testInst <- nlTestFunc3b()
+  RnimbleList <- testInst$run()
+  CtestInst <- compileNimble(testInst)
+  CnimbleList <- CtestInst$run()
+
+  ## test for correct values of R nimbleList
+  expect_identical(RnimbleList$nlCharacters[1], "hello")
+  expect_identical(RnimbleList$nlCharacters[2], "world")
+  ## test for identical values of R and C nimbleLists
+  expect_identical(RnimbleList$nlCharacters, CnimbleList$nlCharacters)
+  expect_identical(is.nl(RnimbleList), TRUE)
+  expect_identical(is.nl(CnimbleList), TRUE)
+  ## expect_identical(is.nl(CtestInst$setupList3), TRUE)  is.nl gives FALSE here, not sure if should be corrected
+})
 
 
 ######## (works in nimble2)
@@ -193,7 +192,7 @@ test_that("nimbleList test 3: return objects are nimbleLists", {
 test_that("nimbleList test 4: return objects are nimbleLists", {
   testListDef4 <- nimbleList(list(nimbleType(name = 'nlCharacter', type = 'character', dim = 0)))
 #  temporarilyAssignInGlobalEnv(testListDef4)
-  
+
   innerNlTestFunc4 <- nimbleFunction(
     setup = function(){
       setupList4 <- testListDef4$new(nlCharacter = "hello world")
@@ -204,7 +203,7 @@ test_that("nimbleList test 4: return objects are nimbleLists", {
     }
   )
 #  temporarilyAssignInGlobalEnv(innerNlTestFunc4)
-  
+
   nlTestFunc4 <- nimbleFunction(
     setup = function(){
       innerFunc4 <- innerNlTestFunc4()
@@ -215,12 +214,12 @@ test_that("nimbleList test 4: return objects are nimbleLists", {
       return(outList)
     }
   )
-  
+
   testInst <- nlTestFunc4()
   RnimbleList <- testInst$run()
   CtestInst <- compileNimble(testInst)
   CnimbleList <- CtestInst$run()
-  
+
   ## test for correct values of R nimbleList
   expect_identical(RnimbleList$nlCharacter, "hello world")
   ## test for identical values of R and C nimbleLists
@@ -235,7 +234,7 @@ test_that("nimbleList test 4: return objects are nimbleLists", {
 test_that("nimbleList test 5: return objects are nimbleLists", {
   testListDef5 <- nimbleList(nlCharacter = character(0))
   #temporarilyAssignInGlobalEnv(testListDef5)
-  
+
   innerNlTestFunc5 <- nimbleFunction(
     setup = function(listDef){
       innerSetupList5 <- listDef$new(nlCharacter = "hello world")
@@ -246,7 +245,7 @@ test_that("nimbleList test 5: return objects are nimbleLists", {
     }
   )
   #temporarilyAssignInGlobalEnv(innerNlTestFunc5)
-  
+
   nlTestFunc5 <- nimbleFunction(
     setup = function(listDef){
       innerFunc5 <- innerNlTestFunc5(listDef)
@@ -259,12 +258,12 @@ test_that("nimbleList test 5: return objects are nimbleLists", {
       return(innerNimList)
     }
   )
-  
+
   testInst <- nlTestFunc5(testListDef5)
   RnimbleList <- testInst$run()
   CtestInst <- compileNimble(testInst)
   CnimbleList <- CtestInst$run()
-  
+
   ## test for correct values of R nimbleList
   expect_identical(RnimbleList$nlCharacter, "goodbye!")
   ## test for identical values of R and C nimbleLists
@@ -287,7 +286,7 @@ test_that("nimbleList test 6: return objects are nimbleLists", {
       return(setupList6)
     }
   )
-  
+
   #temporarilyAssignInGlobalEnv(innerNlTestFunc6)
   nlTestFunc6 <- nimbleFunction(
     setup = function(){
@@ -301,12 +300,12 @@ test_that("nimbleList test 6: return objects are nimbleLists", {
       return(outList)
     }
   )
-  
+
   testInst <- nlTestFunc6()
   RnimbleList <- testInst$run()
   CtestInst <- compileNimble(testInst)
   CnimbleList <- CtestInst$run()
-  
+
   ## test for correct values of R nimbleList
   expect_identical(RnimbleList$nlCharacter, "hello world")
   ## test for identical values of R and C nimbleLists

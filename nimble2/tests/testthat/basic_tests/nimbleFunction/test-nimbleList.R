@@ -100,6 +100,78 @@ test_that("nimbleList works: scenario 4", {
   expect_equal(comp$run()$nlVector, 1:3)
   expect_equal(comp$run()$nlScalar, 15)
 })
+
+# scenario 5: nimbleList object created with initial values in a nimbleFunction without setup code,
+# using named and positional arguments.
+test_that("nimbleList works: scenario 5", {
+  testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
+  nlTestFunc <- nimbleFunction(
+    run = function(x = double(0)) {
+      newList <- testListDef$new(nlVector = c(x, 2*x), nlScalar = x + 1)
+      newList2 <- testListDef$new(newList$nlScalar, newList$nlVector)
+      returnType(testListDef())
+      return(newList2)
+    }
+  )
+  comp <- compileNimble(nlTestFunc)
+  expect_equal(comp(3)$nlScalar, 4)
+  expect_equal(comp(3)$nlVector, c(3, 6))
+})
+
+# scenario 6: as scenario 5 but the nimbleFunction without setup code is called from
+# a nimbleFunction with setup code.
+test_that("nimbleList works: scenario 6", {
+  testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
+  makeList <- nimbleFunction(
+    run = function(x = double(0)) {
+      newList <- testListDef$new(nlScalar = x, nlVector = c(x, 2*x))
+      returnType(testListDef())
+      return(newList)
+    }
+  )
+  nlTestFunc <- nimbleFunction(
+    setup = function(){
+      v <- 4:6
+    },
+    run = function(){
+      returnType(testListDef())
+      return(makeList(sum(v)))
+    }
+  )
+  obj <- nlTestFunc()
+  comp <- compileNimble(obj)
+  expect_equal(comp$run()$nlScalar, 15)
+  expect_equal(comp$run()$nlVector, c(15, 30))
+})
+
+# scenario 7: nimbleList object created with an initial value that needs keyword processing.
+test_that("nimbleList works: scenario 7", {
+  code <- quote({
+    tau ~ dunif(0, 100)
+    mu ~ dnorm(0, 1)
+    for (i in 1:5) {
+      y[i] ~ dnorm(mu, var = tau)
+    }
+  })
+  inits <- list(tau = 25, mu = 0)
+  data <- list(y = rnorm(5))
+  mclass <- nimbleModel::nimbleModel(code, inits = inits, data = data, returnClass = TRUE)
+  m <- mclass$new()
+  nodes <- m$getDependencies("mu")
+  testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
+  nlTestFunc <- nimbleFunction(
+    setup = function(model, nodes) {},
+    run = function() {
+      newList <- testListDef$new(nlScalar = model$calculate(nodes))
+      returnType(testListDef())
+      return(newList)
+    },
+    check = FALSE
+  )
+  nf1 <- nlTestFunc(m, nodes)
+  cnf <- compileNimble(nf1, m)
+  expect_equal(cnf$nf1$run()$nlScalar, m$calculate(nodes))
+})
 # NULL
 
 # nc1 <- nCompiler::nClass(

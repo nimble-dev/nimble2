@@ -1,33 +1,31 @@
 BROWSE_COMPILE_NIMBLE <- FALSE
 
 make_model_calls_methods <- function(code, symTab, auxEnv, info) {
-  # convert model_calculate(model, instr) to model$calculate(instr)
+  # convert model_calculate(model, instrList) to model$calculate(instrList),
+  # model_calculate_indexed(model, instrList, i) to model$calculate_indexed(instrList, i), etc.
+  # nimbleModel's opDefs for modelBase_nClass then turn model$calculate(...) into
+  # model$calculate_impl(...) etc. in labelAbstractTypes.
   method <- switch(code$name,
-    model_calculate = "calculate_impl",
-    model_calculateDiff = "calculateDiff_impl",
-    model_simulate = "simulate_impl",
-    model_getLogProb = "getLogProb_impl",
-    model_getBound = "getBound_impl",
-    model_getParam = "getParam_impl"
+    model_calculate = "calculate",
+    model_calculateDiff = "calculateDiff",
+    model_simulate = "simulate",
+    model_getLogProb = "getLogProb",
+    model_getBound = "getBound",
+    model_getParam = "getParam",
+    model_calculate_indexed = "calculate_indexed",
+    model_calculateDiff_indexed = "calculateDiff_indexed",
+    model_simulate_indexed = "simulate_indexed",
+    model_getLogProb_indexed = "getLogProb_indexed",
+    model_getBound_indexed = "getBound_indexed",
+    model_getParam_indexed = "getParam_indexed",
+    stop("In make_model_calls_methods, unknown model call ", code$name)
   )
-  if(length(code$args) == 2) {
-    new_code <- substitute(
-      MODEL$METHOD(INSTRLISTNAME),
-      list(MODEL = as.name(code$args[[1]]$name),
-          METHOD = as.name(method),
-          INSTRLISTNAME = as.name(code$args[[2]]$name))
-    )
-  } else if(length(code$args) == 3) {
-    new_code <- substitute(
-      MODEL$METHOD(INSTRNAME, PARAMIDNAME),
-      list(MODEL = as.name(code$args[[1]]$name),
-          METHOD = as.name(method),
-          # From getParam or getBound, INSTR will be an expression like somename_instrList[[1]]
-          # so we need to not just use the op name but get the expression
-          INSTRNAME = parse(text = nCompiler::nDeparse(code$args[[2]]), keep.source=FALSE)[[1]], # as.name(code$args[[2]]$name),
-          PARAMIDNAME = as.name(code$args[[3]]$name))
-    )
-  } else stop("In make_model_calls_methods, expected exactly 2 or 3 arguments.")
+  # Arguments after the model can be expressions (e.g. an index i + 1), so deparse them.
+  args <- lapply(code$args[-1], \(arg) parse(text = nCompiler::nDeparse(arg), keep.source = FALSE)[[1]])
+  new_code <- as.call(c(
+    list(call("$", as.name(code$args[[1]]$name), as.name(method))),
+    args
+  ))
   new_expr <- nCompiler::nParse(new_code)
   nCompiler:::replaceArgInCaller(code, new_expr)
   nCompiler:::compile_normalizeCalls(new_expr, symTab, auxEnv)
@@ -65,21 +63,43 @@ getOrSetValues_LAT <- function(code, symTab, auxEnv, info) {
   nimble2:::getOrSetValues_LAT_impl(code, symTab, auxEnv, info)
 }
 
-newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
-  # This does some major AST engineering
-  # We enter with makeNewNimbleList( listDef) 
-  # 1. Recurse on the listDef and make symbols
-  if(length(code$args) < 1) stop("Problem with code for making a new nimbleList")
+MethodCall_LAT_impl <- function(code, symTab, auxEnv, info) {
+  # nCompiler parses A$foo(x) to MethodCall(A, foo(x)).
+  # We intercept nimbleListGen$new(...) and otherwise defer to nCompiler's MethodCall handler.
+  # This replaces nimble's keyword processing of nimbleListGen$new(...), 
+  # (temporarily, only during compileNimble), and it uses nCompiler's
+  # scoping to find the nimbleList generator.
+  #
+  # The work is done by modifying the AST (code) in place.
   LATenv <- nCompiler:::labelAbstractTypesEnv
-  useArgs <- rep(FALSE, length(code$args))
-  useArgs[1] <- TRUE
-  inserts <- LATenv$recurse_labelAbstractTypes(code, symTab, auxEnv,
-                                        handlingInfo,
-                                        useArgs = useArgs)
-  generatorName <- code$args[[1]]$name
+  if(code$args[[2]]$name == "new" && code$args[[1]]$isName) {
+    # Label the type of A (but not new(...)) to see if A is a nimbleList generator.
+    # Labeling a name does not create inserts.
+    LATenv$recurse_labelAbstractTypes(code, symTab, auxEnv, info,
+                                      useArgs = c(TRUE, FALSE))
+    objType <- code$args[[1]]$type
+    if(inherits(objType, "symbolNCgenerator") && is.nlGenerator(objType$NCgenerator)) {
+      newNimbleList_LAT(code, symTab, auxEnv, info)
+      return(NULL)
+    }
+  }
+  # Return whatever nCompiler's handler returns, as if it were called directly.
+  LATenv$MethodCall(code, symTab, auxEnv, info)
+}
+
+MethodCall_LAT <- function(code, symTab, auxEnv, info) {
+  # See getOrSetValues_LAT for why this calls an implementation function.
+  nimble2:::MethodCall_LAT_impl(code, symTab, auxEnv, info)
+}
+
+newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
+  # This does some major AST engineering, modifying code in place.
+  # We enter with MethodCall(listDef, new(...)), with listDef already labeled
+  # as a nimbleList generator. The nClass for a nimbleList has only a default
+  # constructor, so we create the object and then set any fields given as arguments.
   NCgen <- code$args[[1]]$type$NCgenerator
   classname <- nCompiler::NCinternals(NCgen)$cpp_classname
-  
+
   NC_info <- nCompiler:::register_known_nClass(NCgen, project_env = auxEnv$project_env)
 
   returnSym <- nCompiler:::symbolNC$new(name = '',
@@ -87,31 +107,34 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
                             isArg = FALSE,
                             overloadDefs = NC_info$inheritInfo$overloadDefs,
                             NCgenerator = NCgen)
-  
-  newSym <- nCompiler:::symbolNF$new(name = classname,
-                          returnSym = returnSym)
-  # 2. Change to chainedCall(construct_new_nClass( listDef))
-  code$name <- 'construct_new_nClass'
-  code$type <- newSym
+
+  # 1. Match the arguments of new(...) to the nimbleList fields.
+  #    This names any positional arguments and catches unknown field names.
+  newCode <- code$args[[2]]
+  fieldMatchDef <- makeNimbleListTemplateWithBlankFirstArg(nl.getListDef(NCgen))
+  formals(fieldMatchDef) <- formals(fieldMatchDef)[-1] # remove .LEFTSIDE
+  nCompiler:::exprClass_put_args_in_order(fieldMatchDef, newCode)
+
+  # 2. Change to construct_new_nClass(), as nCompiler does for Gen$new() (see MethodCall in
+  #    nCompiler's labelAbstractTypes). nClass_constructor generates nClass_builder<classname>()(args),
+  #    taking the class name from aux$cpp_classname, so all args are removed.
   # The careful way to extract args, removing them from the AST
-  setterArgs <- list()
-  numSetterLines <- 0
-  if(length(code$args) > 1) {
-    numSetterLines <- length(code$args) - 1
-    setterVarNames <- names(code$args)[-1]
-    setterArgs <- vector("list", length = numSetterLines)
-     for(i in length(code$args):2) {
-      setterArgs[[i-1]] <- nCompiler:::removeArg(code, i)
-    }
+  numSetterLines <- length(newCode$args)
+  setterVarNames <- names(newCode$args)
+  setterArgs <- vector("list", length = numSetterLines)
+  for(i in rev(seq_len(numSetterLines))) {
+    setterArgs[[i]] <- nCompiler:::removeArg(newCode, i)
   }
-  
-  newCode <- nCompiler:::wrapExprClassOperator(code, "chainedCall")
-  # now newCode is in the AST where code was
-  newCode$type <- returnSym
+  nCompiler:::removeArg(code, 2) # new(...)
+  nCompiler:::removeArg(code, 1) # the listDef
+  code$name <- 'construct_new_nClass'
+  code$aux$cpp_classname <- classname
+  code$type <- returnSym
+  newCode <- code
 
   # 3. Build a lambda function
   lambdaCodeOp <- nCompiler:::nParse(quote(chainedCall(LambdaFun_(decl, def))))
-  #.   Place it in the AST in place of chainedCall(construct_new_nClass( listDef))
+  #.   Place it in the AST in place of construct_new_nClass()
   nCompiler:::replaceArgInCaller(newCode, lambdaCodeOp)
   lambdaCodeOp$type <- returnSym
 
@@ -120,9 +143,9 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
   lambdaDecl <- nCompiler:::nParse(as.name(paste0('[&]()')))
   nCompiler:::setArg(lambdaCode, 1, lambdaDecl)
   
-  tempName <- as.name(intermediateLabelMaker())
+  tempName <- as.name(nimble2:::intermediateLabelMaker())
   # Set the body to create the new object, using the
-  #. chainedCall(construct_new_nClass( listDef)) piece from above
+  #. construct_new_nClass() piece from above
   lambdaBody <- nCompiler:::nParse(substitute({TEMP <- dummy; return(TEMP)}, 
                                               list(TEMP = tempName)))
  # lambdaBody <- nCompiler:::nParse(quote(return(dummy)))
@@ -138,20 +161,12 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
     }
   }
   
-  # process the body
-  inserts <- nCompiler:::compile_labelAbstractTypes(lambdaBody, symTab, auxEnv)
+  # process the body. Since it is a `{`, any inserts would be attached to its lines, not returned.
+  nCompiler:::compile_labelAbstractTypes(lambdaBody, symTab, auxEnv)
   # put the body in place in the lambda fun call.
   nCompiler:::setArg(lambdaCode, 2, lambdaBody)
-  
-  if(length(inserts)) return(inserts) else return(NULL)
-  
-  NULL
-}
-
-newNimbleList_CPP <- function(code, symTab) {
-  browser()
-
-  NULL
+  # All work is done by modifying the AST in place.
+  invisible(NULL)
 }
 
 nimble_nCompiler_opDefs <- list(
@@ -171,8 +186,14 @@ nimble_nCompiler_opDefs <- list(
   model_calculateDiff = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_simulate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getParam = list(matchDef = function(model, instr, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
-  model_getBound = list(matchDef = function(model, instr, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getBound = list(matchDef = function(model, instr, boundID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getLogProb = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_calculate_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_calculateDiff_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_simulate_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getLogProb_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getParam_indexed = list(matchDef = function(model, instrList, i, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
+  model_getBound_indexed = list(matchDef = function(model, instrList, i, boundID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   getOrSetValues_ = list(matchDef = function(multiCopier) {},
     labelAbstractTypes = list(handler = getOrSetValues_LAT)),
   nimCopy_ = list(
@@ -180,11 +201,9 @@ nimble_nCompiler_opDefs <- list(
     labelAbstractTypes = list(handler = "custom_call",
                               recurse = TRUE,
                               returnType = nCompiler:::symbolVoid$new())),
-  makeNewNimbleListObject = list(
-    matchDef = function(.LEFTSIDE, ...) {},
-    labelAbstractTypes = list(handler = "newNimbleList_LAT"),
-    cppOutput = list(handler = "newNimbleList_CPP")
-  )
+  # Registered with modify = TRUE (the default), so only the labelAbstractTypes
+  # handler is replaced and nCompiler's cppOutput handler is kept.
+  MethodCall = list(labelAbstractTypes = list(handler = MethodCall_LAT))
 )
 
 #' @importFrom nCompiler registerOpDef deregisterOpDef
@@ -193,9 +212,9 @@ nimble_nCompiler_opDefs <- list(
 compileNimble <- function(..., project, dirName = NULL, projectName = "",
                           control = list(),
                           resetFunctions = FALSE,
+                          reset = FALSE,
                           showCompilerOutput = getNimbleOption("showCompilerOutput")) {
   ## 1. Extract compilation items
-  reset <- FALSE
   ## This pulls out ... arguments, makes names from their expressions if names weren't provided, and combines them with any ... arguments that are lists.
   controlDefaults <- list(
     debug = FALSE, debugCpp = FALSE, compileR = TRUE,
@@ -232,16 +251,27 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   if (length(units) == 0) stop("No objects for compilation provided")
 
   ## 2. Get project or make new project
-  if (missing(project)) {
-    if (reset) {
-      warning(paste0(
-        "You requested 'reset = TRUE', but no project was provided.",
-        " If you are trying to re-compiled something into the same project, ",
-        "give it as the project argument as well as a compilation item.",
-        " For example, 'compileNimble(myFunction, project = myFunction, reset = TRUE)'."
-      ))
+  # reset = TRUE: compile the inputs in a new project. Objects already registered
+  #   to another project are moved to the new one.
+  # project provided: use it (it can be a project or any object registered to one).
+  # Otherwise: use the project that the inputs belong to, if any. It is an error
+  #   if the inputs belong to different projects. Otherwise use the nimbleProject
+  #   option if set, or else a new project.
+  if (reset) {
+    if (!missing(project)) {
+      stop("reset = TRUE compiles the inputs in a new project, so the project argument should not be provided.", call. = FALSE)
     }
-    if (!is.null(getNimbleOption("nimbleProject"))) {
+    project <- nimbleProjectClass$new(name = projectName)
+    project$replace_registrations <- TRUE
+    on.exit(project$replace_registrations <- FALSE, add = TRUE)
+  } else if (missing(project)) {
+    units_projects <- unique_nimbleProjects(lapply(units, nimbleProject_registry_lookup))
+    if (length(units_projects) > 1) {
+      stop("The objects provided for compilation belong to different nimbleProjects, so they can't be compiled together.", call. = FALSE)
+    }
+    if (length(units_projects) == 1) {
+      project <- units_projects[[1]]
+    } else if (!is.null(getNimbleOption("nimbleProject"))) {
       project <- getNimbleOption("nimbleProject")
     } else {
       project <- nimbleProjectClass$new(name = projectName) # is dirName needed?
@@ -258,10 +288,9 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
     }
   } else {
     project <- getNimbleProject(project, TRUE)
-    if (!inherits(project, "nimbleProjectClass")) {
-      stop("Invalid project argument; note that models and nimbleFunctions need to be compiled before they can be used to specify a project. Once compiled you can use an R model or nimbleFunction to specify the project.", call. = FALSE)
-    }
   }
+  # An input registered to a different project than the one chosen is caught when
+  # the project tracks it (see nimbleProject_registry_add).
   if (resetFunctions) project$resetFunctions()
 
   for (i in names(controlDefaults)) {
@@ -348,29 +377,33 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   if (isTRUE(.GlobalEnv$BROWSE_COMPILE_NIMBLE)) browser()
 
   project$process()
+  # Only units not already compiled in this project are collected.
   nComp_units <- project$get_nComp_units()
 
   # names(nComp_units) <- names(units)
-  nCompiler::registerOpDef(nimble_nCompiler_opDefs)
-  on.exit({
-    nCompiler::deregisterOpDef(ls(nimble_nCompiler_opDefs))
-  })
-  nCompile_results <- do.call(nCompiler::nCompile, c(nComp_units, list(returnList = TRUE)))
+  nCompile_results <- list()
+  if (length(nComp_units)) {
+    nCompiler::registerOpDef(nimble_nCompiler_opDefs)
+    on.exit({
+      nCompiler::deregisterOpDef(ls(nimble_nCompiler_opDefs))
+    }, add = TRUE)
+    nCompile_results <- do.call(nCompiler::nCompile, c(nComp_units, list(returnList = TRUE)))
+  }
 
   if (isTRUE(.GlobalEnv$BROWSE_COMPILE_NIMBLE)) browser()
 
   compiled_units <- vector("list", length = length(units))
 
-  # simple functions (rcf) do not need instantiation, so they can be extracted first.
+  # Only objects that do not yet have compiled counterparts are instantiated and populated.
+  project$instantiate_and_populate(nCompile_results)
+
+  # simple functions (rcf) do not need instantiation.
   if (sum(rcfUnits) > 0) {
     whichUnits <- which(rcfUnits)
     for (i in whichUnits) {
-      this_name <- nCompiler::NFinternals(units[[i]])$uniqueName
-      compiled_units[[i]] <- nCompile_results[[this_name]]
+      compiled_units[[i]] <- project$RCfunction_getResults(units[[i]])
     }
   }
-
-  project$instantiate_and_populate(nCompile_results)
 
   if (sum(modelUnits) > 0) {
     whichUnits <- which(modelUnits)
@@ -414,23 +447,29 @@ getNimbleTypes <- function(units) {
   ans
 }
 
-# return the nimble project, if any, associated with a model or nimbleFunction object.
-# This feature needs attention. It may be redesigned or deprecated.
+# Return the nimbleProject associated with project, which can be a nimbleProject
+# or any object registered to one: a model, nimbleFunction instance, modelValues
+# or nimbleList object, or a compiled counterpart of one of these.
 getNimbleProject <- function(project, stopOnNull = FALSE) {
   if (inherits(project, "nimbleProjectClass")) {
     return(project)
   }
-  # From here down, this has not been updated to nimble2.
-  if (is.nf(project)) {
-    return(nfVar(project, "nimbleProject"))
+  ans <- nimbleProject_registry_lookup(project)
+  if (is.null(ans) && stopOnNull) {
+    stop(paste0(
+      "Cannot determine a nimbleProject from the project argument. It should be a nimbleProject,",
+      " or a model or nimbleFunction (or compiled version of one) that has already been compiled."
+    ), call. = FALSE)
   }
-  if (is.rcf(project)) {
-    return(environment(project)$nfMethodRCobject$nimbleProject)
-  }
-  ans <- try(project$nimbleProject)
-  if (inherits(ans, "try-error") | is.null(ans)) {
-    if (stopOnNull) stop(paste0("cannot determine nimbleProject from provided project argument"))
-    return(NULL)
+  ans
+}
+
+# Given a list of projects (some possibly NULL), return a list of the distinct non-NULL ones.
+unique_nimbleProjects <- function(projects) {
+  ans <- list()
+  for (project in projects) {
+    if (is.null(project)) next
+    if (!any(vapply(ans, \(x) identical(x, project), logical(1)))) ans <- c(ans, list(project))
   }
   ans
 }

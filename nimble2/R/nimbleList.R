@@ -199,9 +199,7 @@ make_nimbleList_nClass <- function(types,
     } 
   }
   CpublicVars <- character(length(types$vars))
-  isCharacter <- types$types == "character"
-  CpublicVars[isCharacter] <- paste0("character()")
-  CpublicVars[!isCharacter] <- paste0("nArray(nDim=", types$dims[!isCharacter], ", type='", types$types[!isCharacter], "')")
+  CpublicVars <- paste0("nArray(nDim=", types$dims, ", type='", types$types, "')")
   CpublicVars <- as.list(CpublicVars)
   # CpublicVars <- paste0("numericArray(nDim=", types$dims, ")") |> as.list()
   names(CpublicVars) <- types$vars

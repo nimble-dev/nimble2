@@ -69,6 +69,9 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
       # scoping (for environments captured in quosures). See note in nimbleFunction.
       updatedOrigMethodList <- getFunctionEnvVar(nfGenerator, "updatedOrigMethodList")
       buildDerivsList <- getFunctionEnvVar(nfGenerator, "buildDerivsList")
+      # The compileInfo$virtual and/or $abstract settings may have been changed
+      # so we need to carry over the compileInfo to get them.
+      genMethodList <- getFunctionEnvVar(nfGenerator, "methodList")
       origMethods <<- list()
       for(iM in seq_along(updatedOrigMethodList)) {
         origMethods[[iM]] <<- RCfunction(updatedOrigMethodList[[iM]],
@@ -76,6 +79,9 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
           buildDerivs = buildDerivsList[[iM]],
           where = NCenv
         )
+        # Carry over compileInfo (e.g. virtual/abstract settings from nimbleFunctionVirtual)
+        nCompiler::NFinternals(origMethods[[iM]])$compileInfo <<-
+          nCompiler::NFinternals(genMethodList[[iM]])$compileInfo
       }
       names(origMethods) <<- names(updatedOrigMethodList)
       #origMethods <<- nf_getMethodList(nfGenerator)
@@ -691,7 +697,9 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
       inherits(first_inst[[1]], "varRangeClass")) {
         return(symbolVarRangeList$new(name = name))
   }
-  if(inherits(first_inst, "nList")) {
+  # makeInstrList returns an RinstrList (a plain R list mimicking instrList_nClass),
+  # which the C++ instrList_nClass fills when the setup outputs are populated.
+  if(inherits(first_inst, c("RinstrList", "instrList_nClass"))) {
     return(symbolInstrList$new(name = name))
   }
   # if (inherits(instances[[1]][[name]], "ADproxyModelClass")) {

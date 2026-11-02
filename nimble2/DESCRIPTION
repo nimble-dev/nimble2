@@ -10,7 +10,7 @@ Authors@R: c(
 Depends:
     R (>= 4.6.0)
 Imports:
-    R6,nCompiler,methods
+    R6,nCompiler,nimbleModel,methods
 Suggests:
     testthat
 SystemRequirements: GNU make

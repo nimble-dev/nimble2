@@ -211,7 +211,7 @@ getParam_keywordInfo <- keywordInfoClass(
 
     # Determine the type for "nAs", based on first instance.
     modelObj <- eval(code$model, envir = nfProc$instances[[1]])
-    nodeObj <- eval(code$node, envir = nfProc$instances[[1]])
+    nodeObj <- eval(nodeFunVec_ArgList$nodes, envir = nfProc$instances[[1]]) # without any [i]
     paramObj <- eval(code$param, envir = nfProc$instances[[1]])
     nodeRange <- nimbleModel:::getNodes(modelObj, nodeObj)
     dist <- modelObj$getDistribution(nodeRange[[1]])
@@ -220,17 +220,17 @@ getParam_keywordInfo <- keywordInfoClass(
     nDim <- paramType$nDim
     targetType <- paste0("double(", nDim, ")")
 
-    if (!useNodeFunctionVectorByIndex) {
-      newRunCode <- substitute(
-        nAs(model_getParam(MODEL, NODEFUNVEC_NAME[[1]], PARAMID), targetType),
-        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
-            PARAMID = as.name(paramIDname),
-            targetType = targetType
-            )
-      )
-    } else {
-      stop("getBound with a nodes[i] (indexed node) is not supported in nimble2 yet.")
-    }
+    # getParam(model, nodes) uses the first node, which is step 1 of the instrList.
+    # The paramID is found from the first node (see paramID_SetupTemplate), so with nodes[i]
+    # all nodes must have the same paramID for `param`.
+    newRunCode <- substitute(
+      nAs(model_getParam_indexed(MODEL, NODEFUNVEC_NAME, STEP, PARAMID), targetType),
+      list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
+          STEP = if (useNodeFunctionVectorByIndex) nodesIndexExpr else 1L,
+          PARAMID = as.name(paramIDname),
+          targetType = targetType
+          )
+    )
 
     # nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
 
@@ -291,7 +291,6 @@ getBound_keywordInfo <- keywordInfoClass(
       stop("node argument missing from getBound, with no accessor argument supplied")
     }
 
-    # To-do: support model$calculate(nodes[i])
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like getBound(model, nodes[i]), which could have started as model$calculate(nodes[i])
       useNodeFunctionVectorByIndex <- TRUE
@@ -311,15 +310,13 @@ getBound_keywordInfo <- keywordInfoClass(
     boundIDname <- boundID_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
     addNecessarySetupAndInitCode(boundID_SetupTemplate, nodeFunVec_ArgList, nfProc)
     
-    if (!useNodeFunctionVectorByIndex) {
-      newRunCode <- substitute(
-        model_getBound(MODEL, NODEFUNVEC_NAME[[1]], BOUNDID),
-        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
-            BOUNDID = as.name(boundIDname))
-      )
-    } else {
-      stop("getBound with a nodes[i] (indexed node) is not supported in nimble2 yet.")
-    }
+    # getBound(model, nodes) uses the first node, which is step 1 of the instrList.
+    newRunCode <- substitute(
+      model_getBound_indexed(MODEL, NODEFUNVEC_NAME, STEP, BOUNDID),
+      list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
+          STEP = if (useNodeFunctionVectorByIndex) nodesIndexExpr else 1L,
+          BOUNDID = as.name(boundIDname))
+    )
 
     # nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
 
@@ -394,7 +391,6 @@ calculate_keywordInfo <- keywordInfoClass(
       addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
       nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
     }
-    # To-do: support model$calculate(nodes[i])
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
       if (buildDerivs) {
@@ -435,16 +431,10 @@ calculate_keywordInfo <- keywordInfoClass(
         list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
       )
     } else {
-      # Deprecate with nodeFxnVector and nodeFunctionIndex:
+      # model$calculate(nodes[i]): the i-th node of the instrList
       newRunCode <- substitute(
-        calculate(
-          nodeFxnVector = NODEFUNVEC_NAME,
-          nodeFunctionIndex = NODEFUNVECINDEX
-        ),
-        list(
-          NODEFUNVEC_NAME = as.name(nodeFunName),
-          NODEFUNVECINDEX = nodesIndexExpr
-        )
+        model_calculate_indexed(MODEL, NODEFUNVEC_NAME, NODEFUNVECINDEX),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName), NODEFUNVECINDEX = nodesIndexExpr)
       )
     }
     return(newRunCode)
@@ -480,7 +470,6 @@ calculateDiff_keywordInfo <- keywordInfoClass(
       addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
       nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
     }
-    # To-do: Support model$calculateDiff(nodes[i])
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
       useNodeFunctionVectorByIndex <- TRUE
@@ -500,9 +489,10 @@ calculateDiff_keywordInfo <- keywordInfoClass(
         list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
       )
     } else {
+      # model$calculateDiff(nodes[i]): the i-th node of the instrList
       newRunCode <- substitute(
-        calculateDiff(nodeFxnVector = NODEFUNVEC_NAME, nodeFunctionIndex = NODEFUNVECINDEX),
-        list(NODEFUNVEC_NAME = as.name(nodeFunName), NODEFUNVECINDEX = nodesIndexExpr)
+        model_calculateDiff_indexed(MODEL, NODEFUNVEC_NAME, NODEFUNVECINDEX),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName), NODEFUNVECINDEX = nodesIndexExpr)
       )
     }
     return(newRunCode)
@@ -538,7 +528,6 @@ simulate_keywordInfo <- keywordInfoClass(
       addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
       nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
     }
-    # To-do: support model$simulate(nodes[i])
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
       useNodeFunctionVectorByIndex <- TRUE
@@ -558,9 +547,10 @@ simulate_keywordInfo <- keywordInfoClass(
         list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
       )
     } else {
+      # model$simulate(nodes[i]): the i-th node of the instrList
       newRunCode <- substitute(
-        simulate(nodeFxnVector = NODEFUNVEC_NAME, nodeFunctionIndex = NODEFUNVECINDEX),
-        list(NODEFUNVEC_NAME = as.name(nodeFunName), NODEFUNVECINDEX = nodesIndexExpr)
+        model_simulate_indexed(MODEL, NODEFUNVEC_NAME, NODEFUNVECINDEX),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName), NODEFUNVECINDEX = nodesIndexExpr)
       )
     }
     return(newRunCode)
@@ -595,7 +585,6 @@ getLogProb_keywordInfo <- keywordInfoClass(
       addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
       nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
     }
-    # To-do: Support model$getLogProb(nodes[i])
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
       useNodeFunctionVectorByIndex <- TRUE
@@ -615,9 +604,10 @@ getLogProb_keywordInfo <- keywordInfoClass(
         list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
       )
     } else {
+      # model$getLogProb(nodes[i]): the i-th node of the instrList
       newRunCode <- substitute(
-        getLogProb(nodeFxnVector = NODEFUNVEC_NAME, nodeFunctionIndex = NODEFUNVECINDEX),
-        list(NODEFUNVEC_NAME = as.name(nodeFunName), NODEFUNVECINDEX = nodesIndexExpr)
+        model_getLogProb_indexed(MODEL, NODEFUNVEC_NAME, NODEFUNVECINDEX),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName), NODEFUNVECINDEX = nodesIndexExpr)
       )
     }
     return(newRunCode)
@@ -835,9 +825,10 @@ doubleBracket_keywordInfo <- keywordInfoClass(
     possibleObjects <- c("symbolModel", "symbolNimPtrList", "symbolNimbleFunctionList", "symbolNimbleList")
     class <- symTypeFromSymTab(code[[2]], nfProc$setupSymTab, options = possibleObjects)
     if (is.null(class)) { ## assume that an element of a run-time provided nimbleList is being accessed
-      # Example of how we end up here:
+      # Example of how we used to end up here:
       # getParam created code with somename_instrList[[1]],
-      # then we are here for the `[[` but the somename_instrList is not in the symbol table yet
+      # then we are here for the `[[` but the somename_instrList is not in the symbol table yet.
+      # (getParam and getBound now use model_getParam_indexed / model_getBound_indexed at step 1 instead.)
       return(code)
       # In nimble, we got here by a nimbleList case.
       # message("Keyword processor for [[ hasn't handled this case (class is null)")
@@ -1529,6 +1520,13 @@ processKeywordCodeMemberFun <- function(code, nfProc, RCfunProc) { ## handle cas
   dollarSignPart <- code[[1]]
   objectPart <- dollarSignPart[[2]]
 
+  if (deparse(dollarSignPart[[3]]) == "new") {
+    ## nimbleListGen$new(...) is handled during compilation (see MethodCall_LAT_impl).
+    ## Recurse only on the arguments, which may need processing (e.g. model$calculate(nodes)).
+    for (i in seq_along(code)[-1]) code[[i]] <- processKeywords_recurse(code[[i]], nfProc, RCfunProc)
+    return(code)
+  }
+
   isModel <- FALSE
   if (length(objectPart) != 1) {
     isModel <- FALSE
@@ -1798,7 +1796,7 @@ boundID_SetupTemplate <- setupCodeTemplate(
     ))
   },
   setupCodeTemplate = quote(
-    BOUNDIDNAME <- if(BOUND == "lower") 0 else if(BOUND == "upper") 1 else stop("bound must be either 'lower' or 'upper'.")
+    BOUNDIDNAME <- if(BOUND == "lower") 1 else if(BOUND == "upper") 2 else stop("bound must be either 'lower' or 'upper'.") # boundIDs as in nimbleModel
   ),
   makeSetupCodeSubList = function(setupNames, argList, ...) {
     list(
@@ -1819,7 +1817,7 @@ paramID_SetupTemplate <- setupCodeTemplate(
     list("integerScalar") |> setNames(fieldName)
   },
   initCodeTemplate = quote( {
-    PARAMIDNAME <- MODEL$getParamID_impl(INSTRLISTNAME[[1]], PARAM)
+    PARAMIDNAME <- MODEL$getParamID_impl(INSTRLISTNAME$instr_nList[[1]], PARAM)
     }
   ),
   makeInitCodeSubList = function(fields, setupNames, argList, ...){
@@ -1850,10 +1848,10 @@ nodeInstrList_SetupTemplate <- setupCodeTemplate(
   setupCodeTemplate = quote(
     INSTRLISTNAME <- nimbleModel:::makeInstrList(
       model = MODEL,
-      input = NODES
-      #,
+      input = NODES,
       #wrtNodes = WRTNODES,
-      #excludeData = EXCLUDEDATA,
+      includeData = INCLUDEDATA
+      #,
       #sortUnique = SORTUNIQUE,
       #errorContext = ERRORCONTEXT
     )
@@ -1862,10 +1860,10 @@ nodeInstrList_SetupTemplate <- setupCodeTemplate(
     list(
       INSTRLISTNAME = as.name(setupNames[1]),
       MODEL = argList$model,
-      NODES = argList$nodes
-      #,
+      NODES = argList$nodes,
       #WRTNODES = argList$wrtNodes,
-      #EXCLUDEDATA = !argList$includeData,
+      INCLUDEDATA = argList$includeData
+      #,
       #SORTUNIQUE = argList$sortUnique,
       #ERRORCONTEXT = argList$errorContext
     )
@@ -2405,6 +2403,14 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
   memFunName <- deparse(rightSide)
   nestedLeftSide <- FALSE
 
+  if (memFunName == "new") {
+    ## nimbleListGen$new(...) is handled during compilation (see MethodCall_LAT_impl),
+    ## which finds the nimbleList generator by scoping and matches the arguments to fields.
+    ## Arguments are recursed on by matchKeywords_recurse.
+    if (length(leftSide) != 1) stop(paste0("Cannot use a nested nimbleList definition in: ", deparse(code)))
+    return(code)
+  }
+
   ## Step 1: Find the symbol object for whatever is on left-hand side of $
   ## This may involve recursion
   ## Only case where the symbol object can be missing (NULL) is nimbleListDef$new() if nimbleListDef if from global env
@@ -2438,34 +2444,6 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
     }
   } else {
     symTab <- symObj <- NULL
-  }
-
-  if (memFunName == "new") { ## this is unique because in non-nested mode, this can be looking for a nlDef in global environment (or possibly elsewhere, but not dealt with)
-    ## symObj can be null here
-    browser()
-    if (is.null(symObj)) {
-      if (nestedLeftSide) stop("Cannot find nested nimbleList definition")
-      nlGenName <- deparse(leftSide)
-      # nimble had broken use of scoping in the next two lines, using envir = globalenv()
-      if (exists(nlGenName, envir = environment(nfProc$nfGenerator))) {
-        possibleNLgen <- get(nlGenName, envir = environment(nfProc$nfGenerator))
-
-        if (is.nlGenerator(possibleNLgen)) {
-          thisFunctionMatch <- makeNimbleListTemplateWithBlankFirstArg(nl.getListDef(possibleNLgen))
-        } else {
-          stop(paste0("problem with ", deparse(code)))
-        }
-      } else {
-        stop(paste0("problem with ", deparse(code)))
-      }
-    } else {
-      thisFunctionMatch <- makeNimbleListTemplateWithBlankFirstArg(nl.getListDef(symObj$NCgenerator))
-    }
-    for (i in seq_along(code[-1])) code[[i + 1]] <- matchKeywords_recurse(code[[i + 1]], nfProc)
-    code[[length(code) + 1]] <- leftSide ## add '.LEFTSIDE = leftSide' arg to code
-    names(code)[length(code)] <- ".LEFTSIDE"
-    code[[1]] <- as.name("makeNewNimbleListObject") ## modify first arg of code to be desired name of call
-    return(matchAndFill.call(thisFunctionMatch, code)) ## should create makeNewNimbleListObject( nimbleListCallMaybeNested, var1, var2, etc.)
   }
 
   if (is.null(symObj)) stop("Problem looking up object")

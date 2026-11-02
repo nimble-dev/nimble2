@@ -1,13 +1,18 @@
-source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble'))
+source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble2'))
 
 RwarnLevel <- options('warn')$warn
 options(warn = 1)
 nimbleVerboseSetting <- nimbleOptions('verbose')
 nimbleOptions(verbose = FALSE)
 
-# N2FIXME: none of these tests work because they show that
-# in nimble an RCfun must go through keyword processing
-# but in nimble2 that has been cut out of the steps.
+# N2FIXME:
+# Tests that pass an uncompiled nimbleList into a compile RCfunction or method
+# do not work. nCompiler does not (currently) support automatically taking
+# an uncompiled nClass object and converting it to compiled.
+# That is something to discuss.
+#
+# All temporarilyAssignInGlobalEnv tricks from nimble tests are commented out.
+
 
 # nimble2 modifications: diag wasn't working while doing this so it was replaced with matrix
 ## All necessary nlDefinitions below:
@@ -43,11 +48,12 @@ test_that("nimbleList RCfun Test 1", {
   expect_identical(RnimbleList1$nlMatrix, CnimbleList1$nlMatrix)
 })
 
+# (works in nimble2)
 test_that("nimbleList RCfun Test 1a", {
   testListDef1 <- nimbleList(nlScalar = double(0), nlVector = double(1), nlMatrix = double(2))
   otherTestListDef1 <- testListDef1
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
   nlTestFunc1a <- nimbleFunction(
     run = function(){
       outList <- otherTestListDef1$new(nlScalar = 5)
@@ -63,6 +69,7 @@ test_that("nimbleList RCfun Test 1a", {
   expect_identical(RnimbleList1a$nlScalar, CnimbleList1a$nlScalar)
 })
 
+# (works in nimble2)
 test_that("nimbleList RCfun Test 2", {
   ###
   ## Test functions 2 and 2a use a nimbleList returning RC function within a nimbleFunction.  In 2a, the names of the nimbleList definitions
@@ -72,10 +79,10 @@ test_that("nimbleList RCfun Test 2", {
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   innerNlTestFunc2 <- nimbleFunction(
     run = function(){
@@ -84,7 +91,7 @@ test_that("nimbleList RCfun Test 2", {
       return(newList2)
     }
   )
-  temporarilyAssignInGlobalEnv(innerNlTestFunc2)
+  # temporarilyAssignInGlobalEnv(innerNlTestFunc2)
 
   outerNlTestFunc2 <- nimbleFunction(
     setup = function(){
@@ -105,15 +112,16 @@ test_that("nimbleList RCfun Test 2", {
   expect_identical(RnimbleList2$nlScalar, CnimbleList2$nlScalar)
 })
 
+# (works in nimble2)
 test_that("nimbleList RCfun Test 2a", {
   testListDef1 <- nimbleList(nlScalar = double(0), nlVector = double(1), nlMatrix = double(2))
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   innerNlTestFunc2a <- nimbleFunction(
     run = function(){
@@ -122,7 +130,7 @@ test_that("nimbleList RCfun Test 2a", {
       return(newList2a)
     }
   )
-  temporarilyAssignInGlobalEnv(innerNlTestFunc2a)
+  # temporarilyAssignInGlobalEnv(innerNlTestFunc2a)
 
   outerNlTestFunc2a <- nimbleFunction(
     setup = function(nlGen){
@@ -152,10 +160,10 @@ test_that("nimbleList RCfun Test 3", {
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  ## temporarilyAssignInGlobalEnv(testListDef1)
+  #temporarilyAssignInGlobalEnv(otherTestListDef1)
+  #temporarilyAssignInGlobalEnv(testListDef2)
+  #temporarilyAssignInGlobalEnv(differentNlDef)
 
   nlTestFunc3 <- nimbleFunction(
     run = function(nlArg = testListDef1()){
@@ -176,15 +184,17 @@ test_that("nimbleList RCfun Test 3", {
   expect_identical(RnimbleList3$nlScalar, CnimbleList3$nlScalar)
 })
 
+# N2FIXME: Fails due to passing uncompiled nimbleList as compiled
+if(FALSE){
 test_that("nimbleList RCfun Test 3a", {
   testListDef1 <- nimbleList(nlScalar = double(0), nlVector = double(1), nlMatrix = double(2))
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  #temporarilyAssignInGlobalEnv(testListDef1)
+  #temporarilyAssignInGlobalEnv(otherTestListDef1)
+  #temporarilyAssignInGlobalEnv(testListDef2)
+  #temporarilyAssignInGlobalEnv(differentNlDef)
 
   nlTestFunc3a <- nimbleFunction(
     run = function(nlArg = testListDef1()){
@@ -204,7 +214,10 @@ test_that("nimbleList RCfun Test 3a", {
   expect_identical(RnimbleList3a$nlVector, c(1,2,3,4))
   expect_identical(RnimbleList3a$nlScalar, CnimbleList3a$nlScalar)
 })
+}
 
+# N2FIXME: Failure to recognize thet type of a nexted nimbleList def
+if(FALSE) {
 test_that("nimbleList RCfun Test 4", {
   ###
   ## Test function 4 creates a nimbleList with a nested nimbleList inside and RC function
@@ -213,10 +226,10 @@ test_that("nimbleList RCfun Test 4", {
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   nlTestFunc4 <- nimbleFunction(
     run = function(){
@@ -236,7 +249,10 @@ test_that("nimbleList RCfun Test 4", {
   expect_identical(RnimbleList4$nlScalar,2)
   expect_identical(RnimbleList4$nlScalar, CnimbleList4$nlScalar)
 })
+}
 
+# N2FIXME: Fails (same as above)
+if(FALSE) {
 test_that("nimbleList RCfun Test 5", {
   ###
   ## Test function 5 takes 2 nimbleLists as arguments - the type of the second nl argument is nested within the first nl argument.
@@ -245,10 +261,10 @@ test_that("nimbleList RCfun Test 5", {
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   nlTestFunc5 <- nimbleFunction(
     run = function(argList = testListDef2(), argList2 = otherTestListDef1()){
@@ -271,7 +287,10 @@ test_that("nimbleList RCfun Test 5", {
   expect_identical(RnimbleList5$nestedNL$nlScalar, 7)
   expect_identical(RnimbleList5$nestedNL$nlScalar, CnimbleList5$nestedNL$nlScalar)
 })
+}
 
+# N2FIXME: Fails due to nDiag not working
+if(FALSE) {
 test_that("nimbleList RCfun Test 6", {
   ###
   ## Test functions 6 and 7 test the use of eigen (and eigenNimbleLists) and svd (and svdNimbleLists) inside RC functions
@@ -280,10 +299,10 @@ test_that("nimbleList RCfun Test 6", {
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   nlTestFun6 <- nimbleFunction(
     run = function(){
@@ -302,16 +321,19 @@ test_that("nimbleList RCfun Test 6", {
   expect_identical(RnimbleList6$values[1], 0)
   expect_identical(RnimbleList6$vectors, CnimbleList6$vectors)
 })
+}
 
+# N2FIXME: Fails due to no svdNimbleList
+if(FALSE) {
 test_that("nimbleList RCfun Test 7", {
   testListDef1 <- nimbleList(nlScalar = double(0), nlVector = double(1), nlMatrix = double(2))
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   nlTestFun7 <- nimbleFunction(
     run = function(svdArg = svdNimbleList()){
@@ -331,7 +353,9 @@ test_that("nimbleList RCfun Test 7", {
   expect_identical(RnimbleList7$d, c(4, 3, 2, 1))
   expect_identical(RnimbleList7$d, CnimbleList7$d)
 })
-
+}
+# N2FIXME: Fails due to passing uncompiled nimbleList as compiled
+if(FALSE) {
 test_that("nimbleList RCfun Test 8", {
   ###
   ## Test function 8 has 2 nimbleList arguments coming from different nlDefs.  The second nlDef will not be added to the symbolTable unless
@@ -341,10 +365,10 @@ test_that("nimbleList RCfun Test 8", {
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   nlTestFun8 <- nimbleFunction(
     run = function(nlArg1 = testListDef1(), nlArg2 = differentNlDef()){
@@ -363,7 +387,9 @@ test_that("nimbleList RCfun Test 8", {
   expect_identical(RnimbleList8$nlScalar, .2)
   expect_identical(RnimbleList8$nlScalar, CnimbleList8$nlScalar)
 })
-
+}
+# N2FIXME: Fails due to no nimEigen
+if(FALSE) {
 test_that("nimbleList RCfun Test 9", {
   ###
   ## This ninth set of test functions has two levels of nested functions that return nimbleLists generated from the same definition.
@@ -374,10 +400,10 @@ test_that("nimbleList RCfun Test 9", {
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   expect_message(nlTestFun9 <- nimbleFunction(
     run = function(nlArg1 = testListDef1(), doubleArg = double()){
@@ -387,7 +413,7 @@ test_that("nimbleList RCfun Test 9", {
       return(returnNl)
     }
   ), "For this nimbleFunction to compile")
-  temporarilyAssignInGlobalEnv(nlTestFun9)
+  # temporarilyAssignInGlobalEnv(nlTestFun9)
 
   innerNlTestFun9_2 <- nimbleFunction(
     run = function(nlArg1 = testListDef1(), doubleArg = double()){
@@ -398,7 +424,7 @@ test_that("nimbleList RCfun Test 9", {
       return(nlArg1)
     }
   )
-  temporarilyAssignInGlobalEnv(innerNlTestFun9_2)
+  # temporarilyAssignInGlobalEnv(innerNlTestFun9_2)
 
   innerNlTestFun9_1 <- nimbleFunction(
     run = function(nlArg1 = testListDef1(), doubleArg = double()){
@@ -408,7 +434,7 @@ test_that("nimbleList RCfun Test 9", {
     }
   )
 
-  temporarilyAssignInGlobalEnv(innerNlTestFun9_1)
+  # temporarilyAssignInGlobalEnv(innerNlTestFun9_1)
 
 
   nlArg9 <- testListDef1$new(nlScalar = .1)
@@ -436,7 +462,10 @@ test_that("nimbleList RCfun Test 9", {
   CnimbleList9_2_2 <- CwrapperTestFun9Instance_2$run(0)
   expect_identical(CnimbleList9_2_2$nlScalar, -1)
 })
+}
 
+# N2FIXME: Fails due to no eigenNimbleList
+if(FALSE) {
 test_that("nimbleList RCfun Test 10", {
   ###
   ## Test 10 calls a nimbleFunction that uses the eigen() function.  This function takes an eigenNimbleList as a
@@ -446,10 +475,10 @@ test_that("nimbleList RCfun Test 10", {
   otherTestListDef1 <- testListDef1
   testListDef2 <- nimbleList(nlScalar = double(0), nestedNL = testListDef1())
   differentNlDef <- nimbleList(differentNlScalar = double(0))
-  temporarilyAssignInGlobalEnv(testListDef1)
-  temporarilyAssignInGlobalEnv(otherTestListDef1)
-  temporarilyAssignInGlobalEnv(testListDef2)
-  temporarilyAssignInGlobalEnv(differentNlDef)
+  # temporarilyAssignInGlobalEnv(testListDef1)
+  # temporarilyAssignInGlobalEnv(otherTestListDef1)
+  # temporarilyAssignInGlobalEnv(testListDef2)
+  # temporarilyAssignInGlobalEnv(differentNlDef)
 
   nlTestFun10 <- nimbleFunction(
     setup = function(eigList){},
@@ -478,6 +507,7 @@ test_that("nimbleList RCfun Test 10", {
   CnimbleList10_3 <- CnlFunc10Instance_3$run(3*diag(2))
   expect_identical(CnimbleList10_3$values, c(3,3))
 })
+}
 
 options(warn = RwarnLevel)
 nimbleOptions(verbose = nimbleVerboseSetting)

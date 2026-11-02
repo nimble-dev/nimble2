@@ -1,4 +1,4 @@
-# There are more tests of DSL checking in nimble_tests / test-checkDSL.R
+# There are more tests of DSL checking in nimble_tests/core/test-checkDSL.R
 # Here are some quick tests of a new internal function used within DSL checking.
 
 test_that("basic DSL checking tools work", {

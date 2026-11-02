@@ -1,9 +1,9 @@
 # library(nimble2)
 
-devtools::load_all()
+#devtools::load_all()
 nimbleOptions(enableDerivs = FALSE)
 
-nCompiler::nOptions(pause_after_writing_files = TRUE)
+nCompiler::nOptions(pause_after_writing_files = FALSE)
 BROWSE_COMPILE_NIMBLE <- FALSE
 
 test_that("basic modelValues access works", {
