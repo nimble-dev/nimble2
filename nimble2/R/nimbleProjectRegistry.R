@@ -1,8 +1,12 @@
-# Registry of which nimbleProject each object belongs to.
+# Registry of the nimbleProject that most recently compiled each object.
 #
-# This lets a project be recovered from an object (a model, a nimbleFunction
+# This lets a default project be found from an object (a model, a nimbleFunction
 # instance, a modelValues or nimbleList object, or any of their compiled
-# counterparts) without modifying the object.
+# counterparts) without modifying the object. It does not restrict how objects
+# are compiled: the same object can be compiled in several projects, each with its
+# own independent compiled counterpart. The registry records only the most recent
+# one, which is used when an object is given as compileNimble's project argument,
+# and with nimbleOptions(legacy_nimble = TRUE) (see compileNimble).
 #
 # The registry is an environment created in .onLoad. Each entry is named by the
 # object's environment address label and holds a list of weak references with
@@ -36,32 +40,54 @@ nimbleProject_registry_lookup <- function(obj) {
   NULL
 }
 
-# replace = TRUE allows an object already registered to a different project to be
-# moved to this project (used by compileNimble(..., reset = TRUE)).
-nimbleProject_registry_add <- function(obj, project, replace = FALSE) {
+# Record that obj was most recently compiled in project, replacing any earlier record.
+nimbleProject_registry_add <- function(obj, project) {
   key <- nimbleProject_registry_key(obj)
   if (is.null(key)) return(invisible(NULL))
   label <- rlang::env_label(key)
   weakrefs <- nimbleProject_registry[[label]]
   for (i in seq_along(weakrefs)) {
     if (identical(rlang::wref_key(weakrefs[[i]]), key)) {
-      current_project <- rlang::wref_value(weakrefs[[i]])
-      if (identical(current_project, project)) return(invisible(NULL))
-      if (!replace) {
-        stop(paste0(
-          "An object being compiled already belongs to a different nimbleProject.",
-          " Compile it in the same project as before (for example, by providing it or a related object as the project argument),",
-          " or use reset = TRUE to compile it in a new project."
-        ), call. = FALSE)
+      if (!identical(rlang::wref_value(weakrefs[[i]]), project)) {
+        weakrefs[[i]] <- rlang::new_weakref(key, project)
+        nimbleProject_registry[[label]] <- weakrefs
       }
-      weakrefs[[i]] <- rlang::new_weakref(key, project)
-      nimbleProject_registry[[label]] <- weakrefs
       return(invisible(NULL))
     }
   }
   nimbleProject_registry_prune()
   nimbleProject_registry[[label]] <- c(nimbleProject_registry[[label]], list(rlang::new_weakref(key, project)))
   invisible(NULL)
+}
+
+# Return the projects that most recently compiled any models among objs or used
+# in their setup code (searched recursively through nested nimbleFunctions and
+# nimbleFunctionLists). Each project is included once.
+# This is used only with nimbleOptions(legacy_nimble = TRUE) (see compileNimble).
+nimbleProject_registry_lookup_models <- function(objs) {
+  projects <- list()
+  visited <- new.env(parent = emptyenv())
+  visit <- function(obj) {
+    if (inherits(obj, "nimbleFunctionList")) {
+      for (f in obj$contentsList) visit(f)
+      return(invisible(NULL))
+    }
+    key <- nimbleProject_registry_key(obj)
+    if (is.null(key)) return(invisible(NULL))
+    label <- rlang::env_label(key)
+    if (!is.null(visited[[label]])) return(invisible(NULL))
+    visited[[label]] <- TRUE
+    if (inherits(obj, "modelBase_nClass")) {
+      project <- nimbleProject_registry_lookup(obj)
+      if (!is.null(project) && !any(vapply(projects, \(x) identical(x, project), logical(1))))
+        projects <<- c(projects, list(project))
+    } else if (is.nf(obj)) {
+      for (name in nf_getSetupOutputNames(obj)) visit(obj[[name]])
+    }
+    invisible(NULL)
+  }
+  for (obj in objs) visit(obj)
+  projects
 }
 
 # Remove weak references whose objects have been garbage collected.

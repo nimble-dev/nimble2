@@ -247,12 +247,35 @@ nimOptimMethod(
     #
     # new to nimble2
     deduceTypeFromFirstInstanceOnly = FALSE
+    # legacy_nimble is also a nimble2 option, but it is held by nimbleModel
+    # (see nimbleOptionsHeldByNimbleModel).
   )
 )
 
+# Options that are set and read through nimbleOptions but held by nimbleModel,
+# so there is one setting for both packages.
+# legacy_nimble = TRUE means stricter use of original nimble behavior in some cases.
+# In nimble2, these are found by isLegacyNimble().
+nimbleOptionsHeldByNimbleModel <- c("legacy_nimble")
+
+isLegacyNimble <- function() isTRUE(getNimbleOption("legacy_nimble"))
+
 setNimbleOption <- function(name, value) {
+  if (name %in% nimbleOptionsHeldByNimbleModel) {
+    nimbleModel::setNimbleModelOption(name, value)
+    return(invisible(value))
+  }
   assign(name, value, envir = .nimbleOptions)
   invisible(value)
+}
+
+# All nimble options, including those held by nimbleModel.
+allNimbleOptions <- function() {
+  c(
+    as.list(.nimbleOptions),
+    lapply(nimbleOptionsHeldByNimbleModel, nimbleModel::getNimbleModelOption) |>
+      setNames(nimbleOptionsHeldByNimbleModel)
+  )
 }
 
 #' Get NIMBLE Option
@@ -267,6 +290,7 @@ setNimbleOption <- function(name, value) {
 #' @examples
 #' getNimbleOption("MCMCverifyConjugatePosteriors")
 getNimbleOption <- function(x) {
+  if (x %in% nimbleOptionsHeldByNimbleModel) return(nimbleModel::getNimbleModelOption(x))
   option <- try(get(x, envir = .nimbleOptions), silent = TRUE)
   if (inherits(option, "try-error")) {
     return(NULL)
@@ -289,6 +313,17 @@ getNimbleOption <- function(x) {
 #' \code{nimbleOptions()} with no arguments returns a list with the
 #'   current values of the options.  To access the value of a single option,
 #'    one should use \code{getNimbleOption()}.
+#'
+#' The option \code{legacy_nimble} is held by the nimbleModel package, so setting it here
+#' also sets it there. \code{legacy_nimble = TRUE} means stricter use of original nimble
+#' behavior in some cases. In nimble2 these are:
+#' \itemize{
+#'   \item In \code{compileNimble}, models already compiled are shared, as in nimble: if models
+#'   provided, or used in setup code of nimbleFunctions provided, were already compiled, the project
+#'   that most recently compiled them is used, even if the \code{project} argument is a different
+#'   project. Otherwise, objects already compiled get independent compiled copies unless
+#'   the \code{project} in which they were compiled is provided.
+#' }
 #'
 #' @return
 #' When invoked with no arguments, returns a list with the current values of all options.
@@ -314,7 +349,7 @@ nimbleOptions <- function(...) {
   args <- list(...)
   if (!length(args)) {
     # Get all nimble options.
-    return(as.list(.nimbleOptions))
+    return(allNimbleOptions())
   }
   if (length(args) == 1 && is.null(names(args)) && is.list(args[[1]])) {
     # Unpack a single list of many args.
@@ -331,7 +366,7 @@ nimbleOptions <- function(...) {
     args <- names(args)
     invisibleReturn <- TRUE
   }
-  out <- as.list(.nimbleOptions)[args]
+  out <- allNimbleOptions()[args]
   if (length(out) == 1) out <- out[[1]]
   if (invisibleReturn) {
     return(invisible(out))
