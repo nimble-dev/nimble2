@@ -1520,6 +1520,13 @@ processKeywordCodeMemberFun <- function(code, nfProc, RCfunProc) { ## handle cas
   dollarSignPart <- code[[1]]
   objectPart <- dollarSignPart[[2]]
 
+  if (deparse(dollarSignPart[[3]]) == "new") {
+    ## nimbleListGen$new(...) is handled during compilation (see MethodCall_LAT_impl).
+    ## Recurse only on the arguments, which may need processing (e.g. model$calculate(nodes)).
+    for (i in seq_along(code)[-1]) code[[i]] <- processKeywords_recurse(code[[i]], nfProc, RCfunProc)
+    return(code)
+  }
+
   isModel <- FALSE
   if (length(objectPart) != 1) {
     isModel <- FALSE
@@ -2396,6 +2403,14 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
   memFunName <- deparse(rightSide)
   nestedLeftSide <- FALSE
 
+  if (memFunName == "new") {
+    ## nimbleListGen$new(...) is handled during compilation (see MethodCall_LAT_impl),
+    ## which finds the nimbleList generator by scoping and matches the arguments to fields.
+    ## Arguments are recursed on by matchKeywords_recurse.
+    if (length(leftSide) != 1) stop(paste0("Cannot use a nested nimbleList definition in: ", deparse(code)))
+    return(code)
+  }
+
   ## Step 1: Find the symbol object for whatever is on left-hand side of $
   ## This may involve recursion
   ## Only case where the symbol object can be missing (NULL) is nimbleListDef$new() if nimbleListDef if from global env
@@ -2429,33 +2444,6 @@ matchKeywordCodeMemberFun <- function(code, nfProc) { ## handles cases like a$b(
     }
   } else {
     symTab <- symObj <- NULL
-  }
-
-  if (memFunName == "new") { ## this is unique because in non-nested mode, this can be looking for a nlDef in global environment (or possibly elsewhere, but not dealt with)
-    ## symObj can be null here
-    if (is.null(symObj)) {
-      if (nestedLeftSide) stop("Cannot find nested nimbleList definition")
-      nlGenName <- deparse(leftSide)
-      # nimble had broken use of scoping in the next two lines, using envir = globalenv()
-      if (exists(nlGenName, envir = environment(nfProc$nfGenerator))) {
-        possibleNLgen <- get(nlGenName, envir = environment(nfProc$nfGenerator))
-
-        if (is.nlGenerator(possibleNLgen)) {
-          thisFunctionMatch <- makeNimbleListTemplateWithBlankFirstArg(nl.getListDef(possibleNLgen))
-        } else {
-          stop(paste0("problem with ", deparse(code)))
-        }
-      } else {
-        stop(paste0("problem with ", deparse(code)))
-      }
-    } else {
-      thisFunctionMatch <- makeNimbleListTemplateWithBlankFirstArg(nl.getListDef(symObj$NCgenerator))
-    }
-    for (i in seq_along(code[-1])) code[[i + 1]] <- matchKeywords_recurse(code[[i + 1]], nfProc)
-    code[[length(code) + 1]] <- leftSide ## add '.LEFTSIDE = leftSide' arg to code
-    names(code)[length(code)] <- ".LEFTSIDE"
-    code[[1]] <- as.name("makeNewNimbleListObject") ## modify first arg of code to be desired name of call
-    return(matchAndFill.call(thisFunctionMatch, code)) ## should create makeNewNimbleListObject( nimbleListCallMaybeNested, var1, var2, etc.)
   }
 
   if (is.null(symObj)) stop("Problem looking up object")

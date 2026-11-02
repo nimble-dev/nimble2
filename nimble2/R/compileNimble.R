@@ -63,21 +63,43 @@ getOrSetValues_LAT <- function(code, symTab, auxEnv, info) {
   nimble2:::getOrSetValues_LAT_impl(code, symTab, auxEnv, info)
 }
 
-newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
-  # This does some major AST engineering
-  # We enter with makeNewNimbleList( listDef) 
-  # 1. Recurse on the listDef and make symbols
-  if(length(code$args) < 1) stop("Problem with code for making a new nimbleList")
+MethodCall_LAT_impl <- function(code, symTab, auxEnv, info) {
+  # nCompiler parses A$foo(x) to MethodCall(A, foo(x)).
+  # We intercept nimbleListGen$new(...) and otherwise defer to nCompiler's MethodCall handler.
+  # This replaces nimble's keyword processing of nimbleListGen$new(...), 
+  # (temporarily, only during compileNimble), and it uses nCompiler's
+  # scoping to find the nimbleList generator.
+  #
+  # The work is done by modifying the AST (code) in place.
   LATenv <- nCompiler:::labelAbstractTypesEnv
-  useArgs <- rep(FALSE, length(code$args))
-  useArgs[1] <- TRUE
-  inserts <- LATenv$recurse_labelAbstractTypes(code, symTab, auxEnv,
-                                        handlingInfo,
-                                        useArgs = useArgs)
-  generatorName <- code$args[[1]]$name
+  if(code$args[[2]]$name == "new" && code$args[[1]]$isName) {
+    # Label the type of A (but not new(...)) to see if A is a nimbleList generator.
+    # Labeling a name does not create inserts.
+    LATenv$recurse_labelAbstractTypes(code, symTab, auxEnv, info,
+                                      useArgs = c(TRUE, FALSE))
+    objType <- code$args[[1]]$type
+    if(inherits(objType, "symbolNCgenerator") && is.nlGenerator(objType$NCgenerator)) {
+      newNimbleList_LAT(code, symTab, auxEnv, info)
+      return(NULL)
+    }
+  }
+  # Return whatever nCompiler's handler returns, as if it were called directly.
+  LATenv$MethodCall(code, symTab, auxEnv, info)
+}
+
+MethodCall_LAT <- function(code, symTab, auxEnv, info) {
+  # See getOrSetValues_LAT for why this calls an implementation function.
+  nimble2:::MethodCall_LAT_impl(code, symTab, auxEnv, info)
+}
+
+newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
+  # This does some major AST engineering, modifying code in place.
+  # We enter with MethodCall(listDef, new(...)), with listDef already labeled
+  # as a nimbleList generator. The nClass for a nimbleList has only a default
+  # constructor, so we create the object and then set any fields given as arguments.
   NCgen <- code$args[[1]]$type$NCgenerator
   classname <- nCompiler::NCinternals(NCgen)$cpp_classname
-  
+
   NC_info <- nCompiler:::register_known_nClass(NCgen, project_env = auxEnv$project_env)
 
   returnSym <- nCompiler:::symbolNC$new(name = '',
@@ -85,25 +107,29 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
                             isArg = FALSE,
                             overloadDefs = NC_info$inheritInfo$overloadDefs,
                             NCgenerator = NCgen)
-  
+
+  # 1. Match the arguments of new(...) to the nimbleList fields.
+  #    This names any positional arguments and catches unknown field names.
+  newCode <- code$args[[2]]
+  fieldMatchDef <- makeNimbleListTemplateWithBlankFirstArg(nl.getListDef(NCgen))
+  formals(fieldMatchDef) <- formals(fieldMatchDef)[-1] # remove .LEFTSIDE
+  nCompiler:::exprClass_put_args_in_order(fieldMatchDef, newCode)
+
   # 2. Change to construct_new_nClass(), as nCompiler does for Gen$new() (see MethodCall in
   #    nCompiler's labelAbstractTypes). nClass_constructor generates nClass_builder<classname>()(args),
-  #    taking the class name from aux$cpp_classname, so the listDef arg is removed.
+  #    taking the class name from aux$cpp_classname, so all args are removed.
+  # The careful way to extract args, removing them from the AST
+  numSetterLines <- length(newCode$args)
+  setterVarNames <- names(newCode$args)
+  setterArgs <- vector("list", length = numSetterLines)
+  for(i in rev(seq_len(numSetterLines))) {
+    setterArgs[[i]] <- nCompiler:::removeArg(newCode, i)
+  }
+  nCompiler:::removeArg(code, 2) # new(...)
+  nCompiler:::removeArg(code, 1) # the listDef
   code$name <- 'construct_new_nClass'
   code$aux$cpp_classname <- classname
   code$type <- returnSym
-  # The careful way to extract args, removing them from the AST
-  setterArgs <- list()
-  numSetterLines <- 0
-  if(length(code$args) > 1) {
-    numSetterLines <- length(code$args) - 1
-    setterVarNames <- names(code$args)[-1]
-    setterArgs <- vector("list", length = numSetterLines)
-     for(i in length(code$args):2) {
-      setterArgs[[i-1]] <- nCompiler:::removeArg(code, i)
-    }
-  }
-  nCompiler:::removeArg(code, 1) # the listDef
   newCode <- code
 
   # 3. Build a lambda function
@@ -135,20 +161,12 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
     }
   }
   
-  # process the body
-  inserts <- nCompiler:::compile_labelAbstractTypes(lambdaBody, symTab, auxEnv)
+  # process the body. Since it is a `{`, any inserts would be attached to its lines, not returned.
+  nCompiler:::compile_labelAbstractTypes(lambdaBody, symTab, auxEnv)
   # put the body in place in the lambda fun call.
   nCompiler:::setArg(lambdaCode, 2, lambdaBody)
-  
-  if(length(inserts)) return(inserts) else return(NULL)
-  
-  NULL
-}
-
-newNimbleList_CPP <- function(code, symTab) {
-  browser()
-
-  NULL
+  # All work is done by modifying the AST in place.
+  invisible(NULL)
 }
 
 nimble_nCompiler_opDefs <- list(
@@ -183,11 +201,9 @@ nimble_nCompiler_opDefs <- list(
     labelAbstractTypes = list(handler = "custom_call",
                               recurse = TRUE,
                               returnType = nCompiler:::symbolVoid$new())),
-  makeNewNimbleListObject = list(
-    matchDef = function(.LEFTSIDE, ...) {},
-    labelAbstractTypes = list(handler = newNimbleList_LAT),
-    cppOutput = list(handler = newNimbleList_CPP)
-  )
+  # Registered with modify = TRUE (the default), so only the labelAbstractTypes
+  # handler is replaced and nCompiler's cppOutput handler is kept.
+  MethodCall = list(labelAbstractTypes = list(handler = MethodCall_LAT))
 )
 
 #' @importFrom nCompiler registerOpDef deregisterOpDef
