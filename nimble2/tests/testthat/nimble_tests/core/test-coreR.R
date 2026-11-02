@@ -1,6 +1,10 @@
 # modified from nimble's tests
 source(system.file(file.path("tests", "testthat", "test_utils.R"), package = "nimble2"))
 
+# N2FIXME
+# The testing infrastructure here does not work, so we are bailing on all tests
+skip("test-coreR.R is disabled until we get the test routines fixed up for nimble2.")
+
 RwarnLevel <- options("warn")$warn
 options(warn = 1)
 nimbleVerboseSetting <- nimbleOptions("verbose")
