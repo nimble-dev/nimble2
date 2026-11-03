@@ -1,4 +1,3 @@
-
 nimbleOptions(enableDerivs = FALSE)
 BROWSE_COMPILE_NIMBLE <- FALSE
 
@@ -9,7 +8,7 @@ BROWSE_COMPILE_NIMBLE <- FALSE
 # # Next line gives an error because we must support new(...) in Cpub_class always (evidently)
 # obj2 <- NLdef$new(nlScalar = 10, nlVector = 1:3)
 # newList2 <- testListDef2$new(nlScalar = doubleMatrix[1,1]*2)
-# 
+#
 # NLdef <- nimbleList(nlScalar = double(0))
 # nCompiler::NCinternals(NLdef)$symbolTable
 
@@ -46,7 +45,7 @@ test_that("nimbleList works: scenario2", {
       return(newList)
     }
   )
-  
+
   obj <- nlTestFunc()
   comp <- compileNimble(obj)
   expect_equal(comp$run()$nlVector, 1:3)
@@ -74,7 +73,7 @@ test_that("nimbleList works: scenario 3", {
   )
   obj <- nlTestFunc()
   comp <- compileNimble(obj)
-  
+
   expect_equal(comp$run()$nlVector, 1:3)
   expect_equal(comp$run()$nlScalar, 15)
 })
@@ -96,7 +95,7 @@ test_that("nimbleList works: scenario 4", {
   )
   obj <- nlTestFunc()
   comp <- compileNimble(obj)
-  
+
   expect_equal(comp$run()$nlVector, 1:3)
   expect_equal(comp$run()$nlScalar, 15)
 })
@@ -157,6 +156,7 @@ test_that("nimbleList works: scenario 7", {
   data <- list(y = rnorm(5))
   mclass <- nimbleModel::nimbleModel(code, inits = inits, data = data, returnClass = TRUE)
   m <- mclass$new()
+  m$calculate()
   nodes <- m$getDependencies("mu")
   testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
   nlTestFunc <- nimbleFunction(

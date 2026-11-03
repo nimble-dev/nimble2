@@ -28,12 +28,9 @@ nimbleProjectClass <- R6::R6Class(
     # nimbleLabel        =  'ANY',		#'character',
     # refClassDefsEnv    =  'ANY',		#'environment',
     projectName = "ANY", #' character'
-    # replace_registrations is TRUE during compileNimble(..., reset = TRUE),
-    # so objects registered to another project are moved to this one.
-    replace_registrations = FALSE,
-    # Record in the registry that obj belongs to this project. See nimbleProjectRegistry.R.
+    # Record in the registry that obj was most recently compiled in this project. See nimbleProjectRegistry.R.
     register_object = function(obj) {
-      nimbleProject_registry_add(obj, self, replace = replace_registrations)
+      nimbleProject_registry_add(obj, self)
     },
     print = function() {
       writeLines(paste0("nimbleProject object"))
@@ -140,8 +137,8 @@ nimbleProjectClass <- R6::R6Class(
       }
       instances <- modelGens[[NCgen_label]]$instances
       obj_label <- rlang::env_label(as.environment(obj))
+      register_object(obj)
       if (is.null(instances[[obj_label]])) {
-        register_object(obj)
         modelGens[[NCgen_label]]$instances[[obj_label]] <<- obj
       }
       obj
@@ -220,8 +217,8 @@ nimbleProjectClass <- R6::R6Class(
       }
       instances <- mvGens[[NCgen_label]]$instances
       obj_label <- rlang::env_label(as.environment(obj))
+      register_object(obj)
       if (is.null(instances[[obj_label]])) {
-        register_object(obj)
         mvGens[[NCgen_label]]$instances[[obj_label]] <<- obj
       }
       obj
@@ -327,8 +324,8 @@ nimbleProjectClass <- R6::R6Class(
       if(!is.null(obj)) {
         instances <- nlGens[[NCgen_label]]$instances
         obj_label <- rlang::env_label(as.environment(obj))
+        register_object(obj)
         if (is.null(instances[[obj_label]])) {
-          register_object(obj)
           nlGens[[NCgen_label]]$instances[[obj_label]] <<- obj
         }
       }
@@ -506,8 +503,8 @@ nimbleProjectClass <- R6::R6Class(
       instances <- NFgens[[generatorName]]$instances
       if(!is.null(obj)) {
         obj_label <- rlang::env_label(as.environment(obj))
+        register_object(obj)
         if (is.null(instances[[obj_label]])) {
-          register_object(obj)
           NFgens[[generatorName]]$instances[[obj_label]] <<- obj
           if (!is.null(NFgens[[generatorName]]$compiled_generator)) {
             # A new instance of an already compiled generator reuses the compiled class.

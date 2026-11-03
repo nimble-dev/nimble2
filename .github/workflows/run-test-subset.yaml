@@ -45,6 +45,9 @@ jobs:
       - name: Package Dependencies
         # upgrade = "never" so the nCompiler and nimbleModel refs installed above are kept
         run: R -q -e 'remotes::install_deps("nimble2", dependencies = TRUE, upgrade = "never")'
+      - name: Install inline
+        # needed by nCompiler at run time but not listed in its dependencies
+        run: R -q -e 'remotes::install_cran("inline")'
       - name: Build Package
         run: |
             R CMD build nimble2

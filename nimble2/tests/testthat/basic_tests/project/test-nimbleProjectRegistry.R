@@ -51,35 +51,79 @@ test_that("nimble usage pattern: compileNimble(m) then compileNimble(algo, proje
   rm(cm, comp, comp2); gc()
 })
 
-test_that("without a project argument, the inputs' existing project is used", {
+test_that("without a project argument, a new project is used", {
   m <- make_test_model()
   cm <- compileNimble(m)
+  proj <- nimble2:::getNimbleProject(m)
   n0 <- nCompile_call_counter$n
   cm2 <- compileNimble(m)
-  expect_equal(nCompile_call_counter$n, n0) # not recompiled
-  expect_identical(cm, cm2)
-  algo <- foo(m, "mu")
-  comp <- compileNimble(algo, project = m)
-  comp2 <- compileNimble(algo, m)
-  expect_equal(nCompile_call_counter$n, n0 + 1)
+  expect_equal(nCompile_call_counter$n, n0 + 1) # an independent compiled copy
+  expect_false(identical(cm, cm2))
+  proj2 <- nimble2:::getNimbleProject(m) # the most recent project
+  expect_false(identical(proj2, proj))
+  expect_identical(nimble2:::getNimbleProject(cm), proj)
+  expect_identical(nimble2:::getNimbleProject(cm2), proj2)
+  nCompiler::value(cm2, "mu") <- 2
+  expect_equal(nCompiler::value(cm, "mu"), 0.5)
+  # A nimbleFunction using m in setup code gets its own compiled copy of m.
+  algo <- bar(m, "mu", 2)
+  comp <- compileNimble(algo)
+  expect_equal(comp$run(), 1)
+  expect_equal(nCompiler::value(cm, "mu"), 0.5)
+  expect_equal(nCompiler::value(cm2, "mu"), 2)
+  # Within one project, each object is compiled once.
+  n0 <- nCompile_call_counter$n
+  comp2 <- compileNimble(algo, m, project = comp)
+  expect_equal(nCompile_call_counter$n, n0)
   expect_identical(comp2$algo, comp)
-  expect_identical(comp2$m, cm)
+  expect_equal(nCompiler::value(comp2$m, "mu"), 1)
   rm(cm, cm2, comp, comp2); gc()
 })
 
-test_that("objects from different projects are trapped", {
+test_that("with a project argument, objects compiled in another project get independent compiled copies", {
   m1 <- make_test_model()
   m2 <- make_test_model()
   cm1 <- compileNimble(m1)
   cm2 <- compileNimble(m2)
-  expect_error(compileNimble(m1, m2), "belong to different nimbleProjects")
-  expect_error(compileNimble(m1, project = m2), "belongs to a different nimbleProject")
-  # A new nimbleFunction compiled without a project argument gets a new project,
-  # so its model, already in another project, is trapped. (Use project = m1.)
-  algo <- foo(m1, "mu")
-  expect_error(compileNimble(algo), "belongs to a different nimbleProject")
+  proj1 <- nimble2:::getNimbleProject(m1)
+  proj2 <- nimble2:::getNimbleProject(m2)
+  cm1_copy <- compileNimble(m1, project = m2)
+  expect_false(identical(cm1_copy, cm1))
+  expect_identical(nimble2:::getNimbleProject(cm1_copy), proj2)
+  expect_identical(nimble2:::getNimbleProject(cm1), proj1)
+  expect_identical(nimble2:::getNimbleProject(m1), proj2) # the most recent project
+  nCompiler::value(cm1_copy, "mu") <- 2
+  expect_equal(nCompiler::value(cm1, "mu"), 0.5)
   expect_error(nimble2:::getNimbleProject(foo(m1, "mu"), stopOnNull = TRUE), "Cannot determine a nimbleProject")
-  rm(cm1, cm2); gc()
+  rm(cm1, cm2, cm1_copy); gc()
+})
+
+test_that("with legacy_nimble = TRUE, compiled models are shared", {
+  old <- nimbleOptions(c("legacy_nimble", "verbose"))
+  nimbleOptions(legacy_nimble = TRUE, verbose = TRUE)
+  on.exit(nimbleOptions(old))
+  expect_true(nimbleModel::getNimbleModelOption("legacy_nimble")) # one setting for both packages
+  m <- make_test_model()
+  cm <- compileNimble(m)
+  proj <- nimble2:::getNimbleProject(m)
+  # Without a project argument, the project of the model used in setup code is used.
+  algo <- bar(m, "mu", 2)
+  comp <- compileNimble(algo)
+  expect_identical(nimble2:::getNimbleProject(comp), proj)
+  expect_equal(comp$run(), 1)
+  expect_equal(nCompiler::value(cm, "mu"), 1) # the same compiled model
+  # A project argument different from the model's project is not used (with a note).
+  algo2 <- bar(m, "mu", 2)
+  new_proj <- nimble2:::nimbleProjectClass$new()
+  expect_message(comp2 <- compileNimble(algo2, project = new_proj), "legacy_nimble")
+  expect_identical(nimble2:::getNimbleProject(comp2), proj)
+  expect_equal(comp2$run(), 2)
+  expect_equal(nCompiler::value(cm, "mu"), 2)
+  # Models compiled in different projects can't be shared together.
+  m2 <- make_test_model()
+  cm2 <- compileNimble(m2)
+  expect_error(compileNimble(list(foo(m, "mu"), foo(m2, "mu"))), "compiled in different nimbleProjects")
+  rm(cm, comp, comp2, cm2); gc()
 })
 
 test_that("reset = TRUE compiles the inputs in a new project", {

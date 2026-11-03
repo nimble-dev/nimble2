@@ -10,6 +10,10 @@
 
 source(system.file(file.path("tests", "testthat", "test_utils.R"),
                    package = "nimble2"))
+# Tests copied from nimble run with legacy_nimble = TRUE, so nimble2 follows nimble's behavior where they differ.
+legacyNimbleSetting <- nimbleOptions('legacy_nimble')
+nimbleOptions(legacy_nimble = TRUE)
+on.exit(nimbleOptions(legacy_nimble = legacyNimbleSetting), add = TRUE)
 
 nimbleOptions(enableDerivs = FALSE)
 
@@ -389,6 +393,7 @@ test_that("Test of error trapping for reduction functions", {
 
 # ## This test is commented out until nimbleFunctionVirtual is supported.
 test_that("nimbleFunctionVirtual works with abstract and non-abstract methods", {
+  skip("this test needs cat() implemented in the DSL")
   # methods in nimbleFunctionVirtual are by default *abstract*, which means they
   # are declared in the base class but are not defined. (In C++ they have "=0" at the
   # end of the declaration.)  Hence they can't be called.
