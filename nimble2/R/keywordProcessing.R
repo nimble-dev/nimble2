@@ -630,6 +630,17 @@ values_keywordInfo <- keywordInfoClass(
       stop("Missing nodes argument in values(model) is not yet implemented.")
     }
 
+    # mode is a compile-time choice of what nodes[i] means:
+    # "raw" (default): entry i of nodes; "scalar": element i of the flattened values;
+    # "node": node i (not supported yet).
+    mode <- if (isCodeArgBlank(code, "mode")) "raw" else code$mode
+    if (!(is.character(mode) && length(mode) == 1 && mode %in% c("raw", "scalar", "node"))) {
+      stop(paste0("Problem with ", deparse(code), ". mode must be a literal \"raw\", \"scalar\", or \"node\"."))
+    }
+    if (mode == "node") {
+      stop(paste0("Problem with ", deparse(code), ". mode = \"node\" is not supported yet."))
+    }
+
     accessArgList <- list(source = code$model, nodes = code$nodes, logProb = FALSE, logProbOnly = FALSE)
 
     useAccessorVectorByIndex <- FALSE
@@ -638,7 +649,8 @@ values_keywordInfo <- keywordInfoClass(
       if (length(accessArgList$nodes) != 3) stop(paste0("Problem with ", deparse(code), ". If you need to index on the nodes argument there should be only one index."))
       nodesIndexExpr <- accessArgList$nodes[[3]]
       accessArgList$nodes <- accessArgList$nodes[[2]]
-      accessArgList$sortUnique <- FALSE
+    } else if (mode != "raw") {
+      stop(paste0("Problem with ", deparse(code), ". mode = \"", mode, "\" requires indexed nodes, as in values(model, nodes[i], mode = \"", mode, "\")."))
     }
 
     multiCopierNames <- multiCopier_setupCodeTemplate$makeSetupNames(accessArgList)
@@ -653,9 +665,10 @@ values_keywordInfo <- keywordInfoClass(
         list(MCN = as.name(multiCopierNames[1]))
       )
     } else {
+      # The multiCopier is the same one as for values(model, nodes), with one view per entry of nodes.
       newRunCode <- substitute(
-        values(accessor = ACCESS_NAME, accessorIndex = ACCESSVECINDEX),
-        list(ACCESS_NAME = as.name(accessName), ACCESSVECINDEX = nodesIndexExpr)
+        getOrSetValues_indexed_(MCN, I, MODE),
+        list(MCN = as.name(multiCopierNames[1]), I = nodesIndexExpr, MODE = mode)
       )
     }
     return(newRunCode)
@@ -1401,7 +1414,7 @@ matchFunctions[["nimRep"]] <- function(x, times = 1, length.out, each = 1) {}
 # matchFunctions[["nimLogical"]] <- nimLogical
 # matchFunctions[["nimMatrix"]] <- nimMatrix
 # matchFunctions[["nimArray"]] <- nimArray
-matchFunctions[["values"]] <- function(model, nodes, accessor) {}
+matchFunctions[["values"]] <- function(model, nodes, accessor, mode) {}
 matchFunctions[["getParam"]] <- function(model, node, param, nodeFunctionIndex, warn = TRUE) {}
 matchFunctions[["getBound"]] <- function(model, node, bound, nodeFunctionIndex) {}
 matchFunctions[["calculate"]] <- function(model, nodes, nodeFxnVector, nodeFunctionIndex) {}

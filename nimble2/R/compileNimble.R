@@ -38,9 +38,11 @@ getOrSetValues_LAT_impl <- function(code, symTab, auxEnv, info) {
   # type here and then choose method code in the cpp output step.
   copiersName <- as.name(code$args[[1]]$name)
   if(isTRUE(auxEnv$onLHS)) {
+    # setValues_() refreshes the data pointers and returns a proxy whose operator= does the copy.
     new_code <- substitute(
-      `.method`(`->member`(COPIERS, "flatViewGroup"), "setValues_" ),
-      list(COPIERS = copiersName)
+      M(COPIERS, "setValues_"),
+      list(M = as.name("->method"),
+           COPIERS = copiersName)
     )
   } else {
     new_code <- substitute(
@@ -54,6 +56,43 @@ getOrSetValues_LAT_impl <- function(code, symTab, auxEnv, info) {
   nCompiler:::compile_normalizeCalls(new_expr, symTab, auxEnv)
   new_expr$type <- nCompiler:::type2symbol("numericVector")
   NULL
+}
+
+getOrSetValues_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
+  # convert getOrSetValues_indexed_(multiCopier, i, mode) to multiCopier->getValues_raw_(i),
+  # multiCopier->getValues_scalar_(i), or, on the LHS of an assignment, the corresponding
+  # setValues_raw_(i) or setValues_scalar_(i), which return proxies whose operator= does the copy.
+  modeArg <- code$args[[3]]
+  if (!(isTRUE(modeArg$isLiteral) && is.character(modeArg$name) &&
+        modeArg$name %in% c("raw", "scalar"))) {
+    stop("In getOrSetValues_indexed_, mode must be a literal \"raw\" or \"scalar\".")
+  }
+  onLHS <- isTRUE(auxEnv$onLHS)
+  # Label the index as an ordinary (RHS) expression, even when the values() call is on the LHS.
+  auxEnv$onLHS <- FALSE
+  inserts <- nCompiler:::labelAbstractTypesEnv$recurse_labelAbstractTypes(
+    code, symTab, auxEnv, info, useArgs = c(FALSE, TRUE, FALSE)
+  )
+  auxEnv$onLHS <- onLHS
+  method <- paste0(if (onLHS) "setValues_" else "getValues_", modeArg$name, "_")
+  iExpr <- nCompiler:::removeArg(code, 2)
+  new_code <- substitute(
+    M(COPIERS, METHOD, I),
+    list(M = as.name("->method"),
+         COPIERS = as.name(code$args[[1]]$name),
+         METHOD = method,
+         I = 0L) # placeholder for the labeled index expression
+  )
+  new_expr <- nCompiler::nParse(new_code)
+  nCompiler:::setArg(new_expr, 3, iExpr)
+  nCompiler:::replaceArgInCaller(code, new_expr)
+  new_expr$type <- nCompiler:::type2symbol("numericVector")
+  if (length(inserts) == 0) NULL else inserts
+}
+
+getOrSetValues_indexed_LAT <- function(code, symTab, auxEnv, info) {
+  # See getOrSetValues_LAT for why this calls an implementation function.
+  nimble2:::getOrSetValues_indexed_LAT_impl(code, symTab, auxEnv, info)
 }
 
 getOrSetValues_LAT <- function(code, symTab, auxEnv, info) {
@@ -196,6 +235,8 @@ nimble_nCompiler_opDefs <- list(
   model_getBound_indexed = list(matchDef = function(model, instrList, i, boundID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   getOrSetValues_ = list(matchDef = function(multiCopier) {},
     labelAbstractTypes = list(handler = getOrSetValues_LAT)),
+  getOrSetValues_indexed_ = list(matchDef = function(multiCopier, i, mode) {},
+    labelAbstractTypes = list(handler = getOrSetValues_indexed_LAT)),
   nimCopy_ = list(
     matchDef = function(from, fromRow, to, toRow) {},
     labelAbstractTypes = list(handler = "custom_call",
