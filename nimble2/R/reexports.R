@@ -56,3 +56,7 @@ nimbleModel::calc_dmnormAltParams
 #' @export
 #' @importFrom nimbleModel calc_dwishAltParams
 nimbleModel::calc_dwishAltParams
+
+#' @export
+#' @importFrom nimbleModel nimCopy
+nimbleModel::nimCopy

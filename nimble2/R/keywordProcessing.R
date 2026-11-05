@@ -720,10 +720,12 @@ nimCopy_keywordInfo <- keywordInfoClass(
     possibleObjects <- c("symbolModel", "symbolModelValues")
     modelValuesTypes <- c("symbolModelValues")
     accessTypes <- c("symbolModelVariableAccessorVector", "symbolModelValuesAccessorVector")
+    logProb <- if (is.null(code$logProb)) FALSE else code$logProb
+    logProbOnly <- if (is.null(code$logProbOnly)) FALSE else code$logProbOnly
     from_ArgList <- list(name = code$from, source = code$from, class = symTypeFromSymTab(code$from, nfProc$setupSymTab, options = possibleObjects),
-                         row = code$row, nodes = code$nodes, sourceType = NA, logProb = code$logProb, logProbOnly = code$logProbOnly)
+                         row = code$row, nodes = code$nodes, sourceType = NA, logProb = logProb, logProbOnly = logProbOnly)
     to_ArgList <- list(name = code$to, source = code$to, class = symTypeFromSymTab(code$to, nfProc$setupSymTab, options = possibleObjects),
-                       row = code$rowTo, nodes = code$nodesTo, sourceType = NA, logProb = code$logProb, logProbOnly = code$logProbOnly)
+                       row = code$rowTo, nodes = code$nodesTo, sourceType = NA, logProb = logProb, logProbOnly = logProbOnly)
     if (is.null(from_ArgList$class)) {
       stop("Error in nimCopy: '", code$from, "' is not a recognized model or modelValues object.")
     }
@@ -745,28 +747,29 @@ nimCopy_keywordInfo <- keywordInfoClass(
         #to_ArgList$row <- code$rowTo
       #}
     }
+    # For a modelValues side, the model side (if any) is used to find logProb elements of nodes.
+    logProbModel <- if (from_ArgList$class == "symbolModel") code$from else if (to_ArgList$class == "symbolModel") code$to else NULL
+    from_ArgList$model <- to_ArgList$model <- logProbModel
     if (isCodeArgBlank(code, "nodes")) {
-      stop("Case of missing nodes argument in nimCopy is not yet implemented in nimble2.")
-      # if (from_ArgList$class == "symbolModel") {
-      #   node_ArgList <- list(model = from_ArgList$name)
-      #   allNodes_name <- allModelNodes_SetupTemplate$makeName(node_ArgList)
-      #   addNecessarySetupCode(allNodes_name, node_ArgList, allModelNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
-      # } else if (from_ArgList$class == "symbolModelValues") {
-      #   from_ArgList$row <- code$row
-      #   mvVar_ArgList <- list(modelValues = from_ArgList$name)
-      #   allNodes_name <- allModelValuesVars_SetupTemplate$makeName(mvVar_ArgList)
-      #   addNecessarySetupCode(allNodes_name, mvVar_ArgList, allModelValuesVars_SetupTemplate, nfProc, allowToCpp = FALSE)
-      # }
-      # from_ArgList$nodes <- as.name(allNodes_name)
-    } # else {
-    #   from_ArgList$nodes <- code$nodes
-    # }
-
+      # No nodes means all variables of from (including or only logProb variables, per
+      # logProb and logProbOnly), which then need no logProb expansion. See nimbleModel's nimCopy.R.
+      from_ArgList$nodes <- substitute(nimbleModel:::nimCopy_allVars(FROM, LOGPROB, LOGPROBONLY),
+                                       list(FROM = code$from, LOGPROB = logProb, LOGPROBONLY = logProbOnly))
+      from_ArgList$logProb <- from_ArgList$logProbOnly <- FALSE
+      # For the setup names (instead of the deparsed call).
+      from_ArgList$nodesTag <- paste("allVars_LP", deparse(logProb), "LPO", deparse(logProbOnly), sep = "_")
+    }
     if (isCodeArgBlank(code, "nodesTo")) {
+      # The same nodes, already expanded or not in the same way.
       to_ArgList$nodes <- from_ArgList$nodes
-    } #else {
-    #  to_ArgList$nodes <- code$nodesTo
-    #}
+      to_ArgList$logProb <- from_ArgList$logProb
+      to_ArgList$logProbOnly <- from_ArgList$logProbOnly
+      to_ArgList$nodesTag <- from_ArgList$nodesTag
+    }
+
+    # Copying within one object (e.g. between rows of a modelValues) needs separate
+    # from and to multiCopiers, since each holds its own active row.
+    if (identical(code$from, code$to)) to_ArgList$roleTag <- "to"
 
     from_ArgList$sourceType <- if (from_ArgList$class == "symbolModel") "model" else "modelValues"
     to_ArgList$sourceType <- if (to_ArgList$class == "symbolModel") "model" else "modelValues"
@@ -787,8 +790,9 @@ nimCopy_keywordInfo <- keywordInfoClass(
     runCode <- substitute(
       nimCopy_(from = FROM, fromRow  = (FR)-1, to = TO, toRow = (TR)-1),
       list(
-        FROM = as.name(fromMultiCopierNames[1]), FR = from_ArgList$row,
-        TO = as.name(toMultiCopierNames[1]), TR = to_ArgList$row
+        # A model side has no row (it is ignored), so use 1 in case row or rowTo is blank.
+        FROM = as.name(fromMultiCopierNames[1]), FR = if (from_ArgList$sourceType == "model") 1 else from_ArgList$row,
+        TO = as.name(toMultiCopierNames[1]), TR = if (to_ArgList$sourceType == "model") 1 else to_ArgList$row
       )
     )
 
@@ -1696,11 +1700,17 @@ processKeywords_recurse <- function(code, nfProc = NULL, RCfunProc) {
 multiCopier_setupCodeTemplate <- setupCodeTemplate(
   # Note to programmer: required fields of argList are model, nodes and logProb
   makeSetupNames = function(argList, ...) {
-    c(Rname2CppName(paste(deparse(argList$source),
-        deparse(argList$nodes),
-        "multCopy_logProb",
-        deparse(argList$logProb),
-        "LPO", deparse(argList$logProbOnly), sep = "_")),
+    # For a modelValues source with logProb expansion, the model used for it is part of the name.
+    usesModel <- identical(argList$sourceType, "modelValues") &&
+      (isTRUE(argList$logProb) || isTRUE(argList$logProbOnly))
+    nameParts <- c(deparse(argList$source),
+      if (is.null(argList$nodesTag)) paste(deparse(argList$nodes), collapse = "") else argList$nodesTag,
+      "multCopy_logProb",
+      deparse(argList$logProb),
+      "LPO", deparse(argList$logProbOnly),
+      if (usesModel) c("model", deparse(argList$model)),
+      argList$roleTag)
+    c(Rname2CppName(paste(nameParts, collapse = "_")),
       as.character(argList$source)
       )
   },
@@ -1729,15 +1739,17 @@ multiCopier_setupCodeTemplate <- setupCodeTemplate(
     nodes = NODES,
     sourceType = SOURCETYPE,
     logProb = LOGPROB,
-    logProbOnly = LOGPROBONLY)),
+    logProbOnly = LOGPROBONLY,
+    model = MODEL)),
   makeSetupCodeSubList = function(setupNames, argList, ...) {
     list(
       ACCESSNAME = as.name(setupNames[1]),
       SOURCE = argList$source,
       SOURCETYPE = argList$sourceType,
       NODES = argList$nodes,
-      LOGPROB = argList$logProb,
-      LOGPROBONLY = argList$logProbOnly
+      LOGPROB = if (is.null(argList$logProb)) FALSE else argList$logProb,
+      LOGPROBONLY = if (is.null(argList$logProbOnly)) FALSE else argList$logProbOnly,
+      MODEL = argList$model
     )
   }
 )
