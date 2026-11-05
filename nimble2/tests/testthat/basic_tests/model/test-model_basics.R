@@ -266,3 +266,63 @@ test_that("basic getParam and getBound works", {
   rm(nf1, comp)
   gc()
 })
+
+test_that("model$calculate(), calculateDiff(), getLogProb() and simulate() with no nodes use the whole model, compiled", {
+  nimbleOptions(enableDerivs = FALSE)
+  code <- quote({
+    mu ~ dnorm(0, sd = s) # s is RHS-only
+    for (i in 1:4) {
+      x[i] ~ dnorm(mu, 1)
+      w[i, 1:2] <- c(x[i], 2 * mu)
+    }
+    for (j in 1:3) y[j] ~ dnorm(x[j], 1)
+  })
+  constants <- list(s = 2)
+  data <- list(y = c(0.5, -1, 2))
+  inits <- list(mu = 0.2, x = c(0.1, -0.3, 1, 2))
+  mclass <- nimbleModel::nimbleModel(code, constants = constants, data = data, inits = inits, returnClass = TRUE)
+  m <- mclass$new()
+  nf <- nimbleFunction(
+    setup = function(model) {},
+    run = function(simData = logical()) {
+      a <- model$calculate()
+      b <- getLogProb(model)
+      d <- model$calculateDiff()
+      if (simData) {
+        model$simulate(includeData = TRUE)
+      } else {
+        simulate(model)
+      }
+      e <- model$calculate()
+      return(c(a, b, d, e))
+      returnType(double(1))
+    },
+    check = FALSE
+  )
+  nf1 <- nf(m)
+  expected <- dnorm(0.2, 0, 2, log = TRUE) + sum(dnorm(inits$x, 0.2, 1, log = TRUE)) +
+    sum(dnorm(data$y, inits$x[1:3], 1, log = TRUE))
+  # uncompiled
+  set.seed(1)
+  r_ans <- nf1$run(FALSE)
+  expect_equal(r_ans[1:3], c(expected, expected, 0))
+  expect_equal(m$y, data$y)
+  expect_equal(m$w[, 1], m$x)
+  expect_equal(r_ans[4], m$calculate(m$getNodeNames()))
+
+  m$mu <- inits$mu
+  m$x <- inits$x
+  m$calculate()
+  cnf <- compileNimble(nf1, m)
+  set.seed(1)
+  c_ans <- cnf$nf1$run(FALSE)
+  expect_equal(c_ans[1:3], c(expected, expected, 0))
+  expect_equal(cnf$m$y, data$y) # data are not simulated by default
+  expect_false(isTRUE(all.equal(cnf$m$x, inits$x)))
+  expect_equal(cnf$m$w[, 1], cnf$m$x)
+  expect_equal(c_ans[4], cnf$m$calculate(cnf$m$getNodeNames()))
+  c_ans <- cnf$nf1$run(TRUE)
+  expect_false(isTRUE(all.equal(cnf$m$y, data$y)))
+  expect_equal(c_ans[4], cnf$m$calculate(cnf$m$getNodeNames()))
+  rm(nf1); gc()
+})

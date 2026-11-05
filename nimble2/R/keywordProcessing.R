@@ -384,12 +384,14 @@ calculate_keywordInfo <- keywordInfoClass(
     if (isCodeArgBlank(code, "model")) {
       stop("model argument missing from calculate, with no accessor argument supplied")
     }
-    # To-do: Support model$calculate() (with no nodes argument)
     if (isCodeArgBlank(code, "nodes")) {
-      LHSnodes_ArgList <- list(model = code$model)
-      LHSnodes_name <- allLHSNodes_SetupTemplate$makeName(LHSnodes_ArgList)
-      addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
-      nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
+      # No nodes means the whole model.
+      nodeFunName <- allNodesInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+      addNecessarySetupAndInitCode(allNodesInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
+      return(substitute(
+        model_calculate(MODEL, NODEFUNVEC_NAME),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
+      ))
     }
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
@@ -463,12 +465,14 @@ calculateDiff_keywordInfo <- keywordInfoClass(
     if (isCodeArgBlank(code, "model")) {
       stop("model argument missing from calculateDiff, with no accessor argument supplied")
     }
-    # To-do: Support model$calculateDiff()
     if (isCodeArgBlank(code, "nodes")) {
-      LHSnodes_ArgList <- list(model = code$model)
-      LHSnodes_name <- allLHSNodes_SetupTemplate$makeName(LHSnodes_ArgList)
-      addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
-      nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
+      # No nodes means the whole model.
+      nodeFunName <- allNodesInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+      addNecessarySetupAndInitCode(allNodesInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
+      return(substitute(
+        model_calculateDiff(MODEL, NODEFUNVEC_NAME),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
+      ))
     }
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
@@ -523,10 +527,13 @@ simulate_keywordInfo <- keywordInfoClass(
       stop("model argument missing from simulate, with no accessor argument supplied")
     }
     if (isCodeArgBlank(code, "nodes")) {
-      LHSnodes_ArgList <- list(model = code$model)
-      LHSnodes_name <- allLHSNodes_SetupTemplate$makeName(LHSnodes_ArgList)
-      addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
-      nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
+      # No nodes means the whole model.
+      nodeFunName <- allNodesInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+      addNecessarySetupAndInitCode(allNodesInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
+      return(substitute(
+        model_simulate(MODEL, NODEFUNVEC_NAME),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
+      ))
     }
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
@@ -578,12 +585,14 @@ getLogProb_keywordInfo <- keywordInfoClass(
     if (isCodeArgBlank(code, "model")) {
       stop("model argument missing from getLogProb, with no accessor argument supplied")
     }
-    # To-do: Support model$getLogProb()
     if (isCodeArgBlank(code, "nodes")) {
-      LHSnodes_ArgList <- list(model = code$model)
-      LHSnodes_name <- allLHSNodes_SetupTemplate$makeName(LHSnodes_ArgList)
-      addNecessarySetupCode(LHSnodes_name, LHSnodes_ArgList, allLHSNodes_SetupTemplate, nfProc, allowToCpp = FALSE)
-      nodeFunVec_ArgList$nodes <- as.name(LHSnodes_name)
+      # No nodes means the whole model.
+      nodeFunName <- allNodesInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
+      addNecessarySetupAndInitCode(allNodesInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
+      return(substitute(
+        model_getLogProb(MODEL, NODEFUNVEC_NAME),
+        list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName))
+      ))
     }
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like calculate(model, nodes[i]), which could have started as model$calculate(nodes[i])
@@ -1906,6 +1915,32 @@ nodeInstrList_SetupTemplate <- setupCodeTemplate(
       #,
       #SORTUNIQUE = argList$sortUnique,
       #ERRORCONTEXT = argList$errorContext
+    )
+  }
+)
+
+allNodesInstrList_SetupTemplate <- setupCodeTemplate(
+  # For calculate(model), calculateDiff(model), getLogProb(model) and simulate(model)
+  # with no nodes: the instrList for the whole model. calculate, calculateDiff and getLogProb
+  # (includeData = TRUE) share one instrList.
+  makeSetupNames = function(argList, ...) {
+    Rname2CppName(paste(deparse(argList$model),
+      "allNodes_instrList_incDat",
+      deparse(argList$includeData),
+      sep = "_"
+    ))
+  },
+  setupCodeTemplate = quote(
+    INSTRLISTNAME <- nimbleModel:::makeAllNodesInstrList(
+      model = MODEL,
+      includeData = INCLUDEDATA
+    )
+  ),
+  makeSetupCodeSubList = function(setupNames, argList, ...) {
+    list(
+      INSTRLISTNAME = as.name(setupNames[1]),
+      MODEL = argList$model,
+      INCLUDEDATA = argList$includeData
     )
   }
 )
