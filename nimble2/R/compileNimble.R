@@ -62,7 +62,7 @@ getOrSetValues_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
   # convert getOrSetValues_indexed_(multiCopier, i, mode) to multiCopier->getValues_raw_(i),
   # multiCopier->getValues_scalar_(i), or, on the LHS of an assignment, the corresponding
   # setValues_raw_(i) or setValues_scalar_(i), which return proxies whose operator= does the copy.
-  modeArg <- code$args[[3]]
+  modeArg <- code$args[[3]] # This should really be a compileArg, but it is only placed through internal (keyword) processing, so not an issue.
   if (!(isTRUE(modeArg$isLiteral) && is.character(modeArg$name) &&
         modeArg$name %in% c("raw", "scalar"))) {
     stop("In getOrSetValues_indexed_, mode must be a literal \"raw\" or \"scalar\".")
@@ -70,10 +70,12 @@ getOrSetValues_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
   onLHS <- isTRUE(auxEnv$onLHS)
   # Label the index as an ordinary (RHS) expression, even when the values() call is on the LHS.
   auxEnv$onLHS <- FALSE
+  on.exit(auxEnv$onLHS <- onLHS)
   inserts <- nCompiler:::labelAbstractTypesEnv$recurse_labelAbstractTypes(
     code, symTab, auxEnv, info, useArgs = c(FALSE, TRUE, FALSE)
   )
   auxEnv$onLHS <- onLHS
+  on.exit(NULL)
   method <- paste0(if (onLHS) "setValues_" else "getValues_", modeArg$name, "_")
   iExpr <- nCompiler:::removeArg(code, 2)
   new_code <- substitute(
@@ -88,6 +90,71 @@ getOrSetValues_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
   nCompiler:::replaceArgInCaller(code, new_expr)
   new_expr$type <- nCompiler:::type2symbol("numericVector")
   if (length(inserts) == 0) NULL else inserts
+}
+
+model_values_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
+  # convert model_values_indexed_(model, instrList, i), from values(model, nodes[i], mode = "node"),
+  # to model->getValues_indexed_impl(instrList, i) or, on the LHS of an assignment,
+  # setValues_indexed_(model, instrList, i), which returns a proxy whose operator= does the copy
+  # (see modelClass_.h in nimbleModel).
+  onLHS <- isTRUE(auxEnv$onLHS)
+  # Label the index as an ordinary (RHS) expression, even when the values() call is on the LHS.
+  auxEnv$onLHS <- FALSE
+  inserts <- nCompiler:::labelAbstractTypesEnv$recurse_labelAbstractTypes(
+    code, symTab, auxEnv, info, useArgs = c(FALSE, FALSE, TRUE)
+  )
+  auxEnv$onLHS <- onLHS
+  iExpr <- nCompiler:::removeArg(code, 3)
+  modelName <- as.name(code$args[[1]]$name)
+  instrListName <- as.name(code$args[[2]]$name)
+  if (onLHS) {
+    new_code <- substitute(
+      setValues_indexed_(MODEL, INSTRLIST, I),
+      list(MODEL = modelName, INSTRLIST = instrListName, I = 0L) # placeholder for the labeled index
+    )
+  } else {
+    new_code <- substitute(
+      M(MODEL, "getValues_indexed_impl", INSTRLIST, I),
+      list(M = as.name("->method"), MODEL = modelName, INSTRLIST = instrListName, I = 0L)
+    )
+  }
+  new_expr <- nCompiler::nParse(new_code)
+  nCompiler:::setArg(new_expr, if (onLHS) 3 else 4, iExpr)
+  nCompiler:::replaceArgInCaller(code, new_expr)
+  if (onLHS) nCompiler:::compile_normalizeCalls(new_expr, symTab, auxEnv)
+  new_expr$type <- nCompiler:::type2symbol("numericVector")
+  if (length(inserts) == 0) NULL else inserts
+}
+
+model_values_indexed_LAT <- function(code, symTab, auxEnv, info) {
+  # See getOrSetValues_LAT for why this calls an implementation function.
+  nimble2:::model_values_indexed_LAT_impl(code, symTab, auxEnv, info)
+}
+
+model_values_nodes_LAT_impl <- function(code, symTab, auxEnv, info) {
+  # convert model_values_nodes_(model, instrList), from values(model, nodes, mode = "node"),
+  # to model->getValues_nodes_impl(instrList) or, on the LHS of an assignment,
+  # setValues_nodes_(model, instrList), which returns a proxy as for setValues_indexed_.
+  onLHS <- isTRUE(auxEnv$onLHS)
+  modelName <- as.name(code$args[[1]]$name)
+  instrListName <- as.name(code$args[[2]]$name)
+  if (onLHS) {
+    new_code <- substitute(setValues_nodes_(MODEL, INSTRLIST),
+                           list(MODEL = modelName, INSTRLIST = instrListName))
+  } else {
+    new_code <- substitute(M(MODEL, "getValues_nodes_impl", INSTRLIST),
+                           list(M = as.name("->method"), MODEL = modelName, INSTRLIST = instrListName))
+  }
+  new_expr <- nCompiler::nParse(new_code)
+  nCompiler:::replaceArgInCaller(code, new_expr)
+  if (onLHS) nCompiler:::compile_normalizeCalls(new_expr, symTab, auxEnv)
+  new_expr$type <- nCompiler:::type2symbol("numericVector")
+  NULL
+}
+
+model_values_nodes_LAT <- function(code, symTab, auxEnv, info) {
+  # See getOrSetValues_LAT for why this calls an implementation function.
+  nimble2:::model_values_nodes_LAT_impl(code, symTab, auxEnv, info)
 }
 
 getOrSetValues_indexed_LAT <- function(code, symTab, auxEnv, info) {
@@ -237,6 +304,22 @@ nimble_nCompiler_opDefs <- list(
     labelAbstractTypes = list(handler = getOrSetValues_LAT)),
   getOrSetValues_indexed_ = list(matchDef = function(multiCopier, i, mode) {},
     labelAbstractTypes = list(handler = getOrSetValues_indexed_LAT)),
+  model_values_indexed_ = list(matchDef = function(model, instrList, i) {},
+    labelAbstractTypes = list(handler = model_values_indexed_LAT)),
+  # A C++ template function in nimbleModel's modelClass_.h, emitted by model_values_indexed_LAT.
+  setValues_indexed_ = list(
+    matchDef = function(model, instrList, i) {},
+    labelAbstractTypes = list(handler = "custom_call",
+                              recurse = TRUE,
+                              returnType = "numericVector")),
+  model_values_nodes_ = list(matchDef = function(model, instrList) {},
+    labelAbstractTypes = list(handler = model_values_nodes_LAT)),
+  # A C++ template function in nimbleModel's modelClass_.h, emitted by model_values_nodes_LAT.
+  setValues_nodes_ = list(
+    matchDef = function(model, instrList) {},
+    labelAbstractTypes = list(handler = "custom_call",
+                              recurse = TRUE,
+                              returnType = "numericVector")),
   nimCopy_ = list(
     matchDef = function(from, fromRow, to, toRow) {},
     labelAbstractTypes = list(handler = "custom_call",
