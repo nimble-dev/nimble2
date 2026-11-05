@@ -630,6 +630,45 @@ values_keywordInfo <- keywordInfoClass(
       stop("Missing nodes argument in values(model) is not yet implemented.")
     }
 
+    # mode is a compile-time choice of what nodes[i] means:
+    # "raw" (default): entry i of nodes; "scalar": element i of the flattened values;
+    # "node": node i, in sorted order as for calculate(model, nodes[i]).
+    mode <- if (isCodeArgBlank(code, "mode")) "raw" else code$mode
+    if (!(is.character(mode) && length(mode) == 1 && mode %in% c("raw", "scalar", "node"))) {
+      stop(paste0("Problem with ", deparse(code), ". mode must be a literal \"raw\", \"scalar\", or \"node\"."))
+    }
+    if (mode == "node") {
+      # Node mode uses an instrList (made and checked in setup code) and the model's
+      # per-node getValues/setValues, not a multiCopier.
+      # values(model, nodes[i], mode = "node") is node i; values(model, nodes, mode = "node")
+      # is all the nodes, in the same (sorted) order.
+      indexed <- hasBracket(code$nodes)
+      if (indexed && length(code$nodes) != 3) {
+        stop(paste0("Problem with ", deparse(code), ". If you need to index on the nodes argument there should be only one index."))
+      }
+      # These arguments match those of calculate(model, nodes[i]), so the instrList is shared.
+      # The unindexed case uses the same instrList as the indexed case, so they always agree.
+      instrList_ArgList <- list(
+        model = code$model, nodes = if (indexed) code$nodes[[2]] else code$nodes, wrtNodes = NULL,
+        includeData = TRUE, sortUnique = FALSE
+      )
+      instrListName <- nodeInstrList_SetupTemplate$makeSetupNames(instrList_ArgList)[1]
+      addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, instrList_ArgList, nfProc)
+      addNecessarySetupAndInitCode(valuesNodeCheck_SetupTemplate, instrList_ArgList, nfProc)
+      if (indexed) {
+        newRunCode <- substitute(
+          model_values_indexed_(MODEL, INSTRLIST, I),
+          list(MODEL = code$model, INSTRLIST = as.name(instrListName), I = code$nodes[[3]])
+        )
+      } else {
+        newRunCode <- substitute(
+          model_values_nodes_(MODEL, INSTRLIST),
+          list(MODEL = code$model, INSTRLIST = as.name(instrListName))
+        )
+      }
+      return(newRunCode)
+    }
+
     accessArgList <- list(source = code$model, nodes = code$nodes, logProb = FALSE, logProbOnly = FALSE)
 
     useAccessorVectorByIndex <- FALSE
@@ -638,8 +677,8 @@ values_keywordInfo <- keywordInfoClass(
       if (length(accessArgList$nodes) != 3) stop(paste0("Problem with ", deparse(code), ". If you need to index on the nodes argument there should be only one index."))
       nodesIndexExpr <- accessArgList$nodes[[3]]
       accessArgList$nodes <- accessArgList$nodes[[2]]
-      accessArgList$sortUnique <- FALSE
     }
+    # Unindexed scalar mode is the same as raw mode: all the values, flattened.
 
     multiCopierNames <- multiCopier_setupCodeTemplate$makeSetupNames(accessArgList)
     # fields <- multiCopier_setupCodeTemplate$makeFields(accessArgList)
@@ -653,9 +692,10 @@ values_keywordInfo <- keywordInfoClass(
         list(MCN = as.name(multiCopierNames[1]))
       )
     } else {
+      # The multiCopier is the same one as for values(model, nodes), with one view per entry of nodes.
       newRunCode <- substitute(
-        values(accessor = ACCESS_NAME, accessorIndex = ACCESSVECINDEX),
-        list(ACCESS_NAME = as.name(accessName), ACCESSVECINDEX = nodesIndexExpr)
+        getOrSetValues_indexed_(MCN, I, MODE),
+        list(MCN = as.name(multiCopierNames[1]), I = nodesIndexExpr, MODE = mode)
       )
     }
     return(newRunCode)
@@ -1401,7 +1441,7 @@ matchFunctions[["nimRep"]] <- function(x, times = 1, length.out, each = 1) {}
 # matchFunctions[["nimLogical"]] <- nimLogical
 # matchFunctions[["nimMatrix"]] <- nimMatrix
 # matchFunctions[["nimArray"]] <- nimArray
-matchFunctions[["values"]] <- function(model, nodes, accessor) {}
+matchFunctions[["values"]] <- function(model, nodes, accessor, mode) {}
 matchFunctions[["getParam"]] <- function(model, node, param, nodeFunctionIndex, warn = TRUE) {}
 matchFunctions[["getBound"]] <- function(model, node, bound, nodeFunctionIndex) {}
 matchFunctions[["calculate"]] <- function(model, nodes, nodeFxnVector, nodeFunctionIndex) {}
@@ -1866,6 +1906,35 @@ nodeInstrList_SetupTemplate <- setupCodeTemplate(
       #,
       #SORTUNIQUE = argList$sortUnique,
       #ERRORCONTEXT = argList$errorContext
+    )
+  }
+)
+
+valuesNodeCheck_SetupTemplate <- setupCodeTemplate(
+  # For values(model, nodes[i], mode = "node"), which uses the same instrList as
+  # calculate(model, nodes[i]) (from nodeInstrList_SetupTemplate, so it is shared).
+  # This adds a check that nodes has no RHS-only elements or logProb variables.
+  # The check is separate from the instrList setup code because that code may already
+  # have been added (without the check) by a calculate(model, nodes[i]) call.
+  # Its makeID tag keeps two values() calls with the same model and nodes from repeating
+  # the check, and no setup output (C++ field) is made.
+  makeID = function(argList, ...) {
+    Rname2CppName(paste(deparse(argList$model),
+      deparse(argList$nodes),
+      "valuesNode_checked",
+      sep = "_"
+    ))
+  },
+  setupCodeTemplate = quote(
+    nimbleModel:::check_values_node_input(
+      model = MODEL,
+      nodes = NODES
+    )
+  ),
+  makeSetupCodeSubList = function(setupNames, argList, ...) {
+    list(
+      MODEL = argList$model,
+      NODES = argList$nodes
     )
   }
 )
