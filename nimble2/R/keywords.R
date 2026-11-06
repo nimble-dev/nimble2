@@ -35,8 +35,11 @@ nimKeyWords <- list(
   copy = "nimCopy",
   print = "nimPrint",
   cat = "nimCat",
-  step = "nimStep",
-  equals = "nimEquals",
+  # step and equals (and their nim-prefixed forms) are changed directly to the nCompiler names.
+  step = "nStep",
+  nimStep = "nStep",
+  equals = "nEquals",
+  nimEquals = "nEquals",
   dim = "nimDim",
   stop = "nimStop",
   numeric = "nimNumeric",
