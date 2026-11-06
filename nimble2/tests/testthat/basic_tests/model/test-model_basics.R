@@ -267,6 +267,76 @@ test_that("basic getParam and getBound works", {
   gc()
 })
 
+test_that("getParam works for vector and matrix parameters, compiled", {
+  code <- quote({
+    for (i in 1:2) {
+      x[i, 1:3] ~ dmnorm(mu[i, 1:3], prec = P[1:3, 1:3])
+    }
+    W[1:3, 1:3] ~ dwish(R = P[1:3, 1:3], df = 5)
+    z[1:3] ~ ddirch(alpha[1:3])
+    k ~ dcat(p[1:3])
+  })
+  P <- crossprod(matrix(c(2, .3, .1, .3, 1.5, .2, .1, .2, 1), 3))
+  mu <- matrix(c(.1, .2, .3, 1, 2, 3), nrow = 2, byrow = TRUE)
+  inits <- list(
+    mu = mu, P = P, alpha = c(1, 2, 3), p = c(.2, .3, .5),
+    x = matrix(1:6, 2), W = 2 * P, z = c(.2, .3, .5), k = 2
+  )
+  mclass <- nimbleModel::nimbleModel(code, inits = inits, returnClass = TRUE)
+  m <- mclass$new()
+  m$calculate()
+
+  nf <- nimbleFunction(
+    setup = function(model, xnodes) {},
+    methods = list(
+      getMean = function(i = integer()) {
+        ans <- model$getParam(xnodes[i], "mean")
+        return(ans)
+        returnType(double(1))
+      },
+      getCov = function() {
+        ans <- model$getParam("x[1, 1:3]", "cov")
+        return(ans)
+        returnType(double(2))
+      },
+      getWishS = function() {
+        ans <- model$getParam("W", "S")
+        return(ans)
+        returnType(double(2))
+      },
+      getAlpha = function() {
+        ans <- model$getParam("z", "alpha")
+        return(ans)
+        returnType(double(1))
+      },
+      getProb = function() {
+        ans <- model$getParam("k", "prob")
+        return(ans)
+        returnType(double(1))
+      }
+    ),
+    check = FALSE
+  )
+  nf1 <- nf(m, c("x[1, 1:3]", "x[2, 1:3]")) # uncompiled, xnodes[i] indexes these names
+  check <- function(obj) {
+    expect_equal(obj$getMean(1), mu[1, ])
+    expect_equal(obj$getMean(2), mu[2, ])
+    expect_equal(obj$getCov(), solve(P))
+    expect_equal(obj$getWishS(), solve(P))
+    expect_equal(obj$getAlpha(), c(1, 2, 3))
+    expect_equal(obj$getProb(), c(.2, .3, .5))
+  }
+  check(nf1)
+
+  comp <- compileNimble(m, nf1)
+  for (v in names(inits)) comp$m[[v]] <- inits[[v]]
+  comp$m$calculate()
+  check(comp$nf1)
+  comp$nf1 <- NULL
+  rm(nf1, comp)
+  gc()
+})
+
 test_that("model$calculate(), calculateDiff(), getLogProb() and simulate() with no nodes use the whole model, compiled", {
   nimbleOptions(enableDerivs = FALSE)
   code <- quote({
