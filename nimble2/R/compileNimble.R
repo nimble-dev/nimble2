@@ -287,7 +287,6 @@ nimble_nCompiler_opDefs <- list(
   nimDim = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "dim")),
   rexp_nimble = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "rexp_nCompiler")),
   dexp_nimble = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "dexp_nCompiler")),
-  nimStep = list(simpleTransformations = list(handler = "replaceAndNormalize", replacement = "nStep")),
   model_calculate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_calculateDiff = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_simulate = list(matchDef = function(model, instrList) {}, simpleTransformations = list(handler = make_model_calls_methods)),

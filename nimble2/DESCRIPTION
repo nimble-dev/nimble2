@@ -8,9 +8,10 @@ Authors@R: c(
     person("Christopher", "Paciorek", , "paciorek@stat.berkeley.edu", role = c("aut", "cre"))
     )
 Depends:
-    R (>= 4.6.0)
+    R (>= 4.6.0),
+    nCompiler
 Imports:
-    R6,nCompiler,nimbleModel,methods
+    R6,nimbleModel,methods
 Suggests:
     testthat
 SystemRequirements: GNU make
