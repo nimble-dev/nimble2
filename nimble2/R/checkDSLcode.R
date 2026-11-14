@@ -1,4 +1,3 @@
-
 n2_update_and_check_RCfun_code <- function(f,
                                            check = FALSE,
                                            methodNames = NULL,
@@ -96,27 +95,35 @@ nf_checkDSLcode <- function(code, methodNames, setupVarNames, args, where = NULL
 }
 
 # This replaces findMethodsInExprClass in nimble
-# That used exprClasses, creating a separate parsing and 
+# That used exprClasses, creating a separate parsing and
 # AST creation just for the checking. We think
 # the task is simple enough to do it in a pure R
 # syntax tree here instead.
 findMethodsInRcode <- function(code) {
-  if(is.name(code)) return(NULL)
-  if(is.numeric(code)) return(NULL)
-  if(is.logical(code)) return(NULL)
-  if(is.character(code)) return(NULL)
+  if (is.name(code)) {
+    return(NULL)
+  }
+  if (is.numeric(code)) {
+    return(NULL)
+  }
+  if (is.logical(code)) {
+    return(NULL)
+  }
+  if (is.character(code)) {
+    return(NULL)
+  }
   fxn_expr <- code[[1]]
   # Always recurse. If there are no args, then
   # res will be NULL
   res <- lapply(code[-1], findMethodsInRcode) |> unlist()
-  if(is.name(fxn_expr)) {
+  if (is.name(fxn_expr)) {
     # We have a simple call, foo(arg1, arg2), so just return res
     return(res)
   }
   # We have a chained call, like obj$foo(arg1, arg2)
   # fxn_expr is the `obj$foo` part, so pull that apart next
   fxn_expr_op <- fxn_expr[[1]]
-  if(identical(fxn_expr_op, as.name("$"))) {
+  if (identical(fxn_expr_op, as.name("$"))) {
     method_name <- deparse(fxn_expr[[3]])
     # recursion allows a$b(x)$c(y) to find both c and b.
     return(c(method_name, findMethodsInRcode(fxn_expr[[2]]), res))

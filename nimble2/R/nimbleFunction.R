@@ -7,8 +7,8 @@ nimbleFunctionBase <- setRefClass(
   Class = "nimbleFunctionBase",
   fields = list(
     .generatorFunction = "ANY",
-    .CobjectInterface = "ANY"#,
-#    .newSetupLinesProcessed = "ANY"
+    .CobjectInterface = "ANY" # ,
+    #    .newSetupLinesProcessed = "ANY"
   ),
   methods = list(
     initialize = function(...) {
@@ -22,11 +22,11 @@ nimbleFunctionBase <- setRefClass(
 
 #' @export
 nimbleFunctionVirtual <- function(contains = NULL,
-                                  run = function() { },
-                                  methods     = list(),
-                                  name        = NA,
+                                  run = function() {},
+                                  methods = list(),
+                                  name = NA,
                                   methodControl = list()) {
-  # We simply pack methodControl into a list to pass into the ... 
+  # We simply pack methodControl into a list to pass into the ...
   # arg of nimbleFunction. This will be used to update the
   # compileInfo virtual and abstract settings for the method nFunctions.
   # We must also set the compileInfo$createFromR to FALSE if there are any
@@ -38,7 +38,8 @@ nimbleFunctionVirtual <- function(contains = NULL,
     methods = methods,
     contains = contains,
     name = name,
-    virtual = virtual)
+    virtual = virtual
+  )
   nf
 }
 
@@ -108,7 +109,7 @@ nimbleFunction <- function(setup = NULL,
   dotsVirtual <- dotsList$virtual
   is_NFV <- FALSE # NFV = nimbleFunctionVirtual
   methodControl <- NULL
-  if(!is.null(dotsVirtual)) {
+  if (!is.null(dotsVirtual)) {
     is_NFV <- TRUE
     virtual <- TRUE
     methodControl <- dotsVirtual$methodControl
@@ -180,11 +181,11 @@ nimbleFunction <- function(setup = NULL,
   names(methodList) <- names(origMethodList)
   NCcompileInfo <- list()
 
-  if(is_NFV) {
-    for(m in names(methodList)) {
+  if (is_NFV) {
+    for (m in names(methodList)) {
       CI <- nCompiler::NFinternals(methodList[[m]])$compileInfo
       CI$virtual <- TRUE
-      if(!isFALSE(methodControl[[m]]$required)) { #cf nimble's cppVirtualNimbleFunctionClass$processNFprof
+      if (!isFALSE(methodControl[[m]]$required)) { # cf nimble's cppVirtualNimbleFunctionClass$processNFprof
         CI$abstract <- TRUE
         anyAbstract <- TRUE
       }

@@ -86,7 +86,8 @@ test_that("compileNimble works with nimbleFunction using model$calculate", {
   expect_equal(c_ll1, c_ll2)
   expect_equal(c_ll1, r_ll)
 
-  rm(nf1); gc()
+  rm(nf1)
+  gc()
 })
 
 test_that("compileNimble works with nimbleFunction using model$simulate", {
@@ -132,7 +133,7 @@ test_that("compileNimble works with nimbleFunction using model$simulate", {
   c_ll2 <- cnf$m$calculate(nodes)
 
   set.seed(2)
-  nfu1 <- nf1# nf_uncomp(m, nodes)
+  nfu1 <- nf1 # nf_uncomp(m, nodes)
   r_ll1 <- nfu1$run()
   r_ll2 <- m$calculate(nodes)
   expect_equal(c_ll1, c_ll2)
@@ -140,7 +141,8 @@ test_that("compileNimble works with nimbleFunction using model$simulate", {
   expect_equal(r_ll1, r_ll2)
   expect_equal(cnf$m$y, m$y)
 
-  rm(nf1); gc()
+  rm(nf1)
+  gc()
 })
 
 test_that("compileNimble works with nimbleFunction using model$calculateDiff and model$getLogProb", {
@@ -166,7 +168,7 @@ test_that("compileNimble works with nimbleFunction using model$calculateDiff and
       first_logProb <- 0
       second_logProb <- 0
     },
-    run = function(mu = 'numericVector', y = 'numericVector') {
+    run = function(mu = "numericVector", y = "numericVector") {
       first_logProb <<- model$calculate(nodes)
       model$mu <<- mu
       model$y <<- y
@@ -213,11 +215,11 @@ test_that("compileNimble works with nimbleFunction using model$calculateDiff and
   expect_equal(r_lpdiff, r_lp2 - r_lp1)
   expect_equal(r_lpdiff, c_lpdiff)
 
-  rm(nf1); gc()
+  rm(nf1)
+  gc()
 })
 
 test_that("basic getParam and getBound works", {
-
   code <- quote({
     tau ~ dunif(0, 100)
     mu ~ dnorm(0, 1)
@@ -234,8 +236,7 @@ test_that("basic getParam and getBound works", {
   m$calculate()
 
   nf <- nimbleFunction(
-    setup = function(model, node1, param, node2) {
-    },
+    setup = function(model, node1, param, node2) {},
     methods = list(
       checkParam = function() {
         ans <- model$getParam(node1, param)
@@ -394,5 +395,6 @@ test_that("model$calculate(), calculateDiff(), getLogProb() and simulate() with 
   c_ans <- cnf$nf1$run(TRUE)
   expect_false(isTRUE(all.equal(cnf$m$y, data$y)))
   expect_equal(c_ans[4], cnf$m$calculate(cnf$m$getNodeNames()))
-  rm(nf1); gc()
+  rm(nf1)
+  gc()
 })

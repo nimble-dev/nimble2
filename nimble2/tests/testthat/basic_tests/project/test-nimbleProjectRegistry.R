@@ -6,25 +6,41 @@ nCompiler::nOptions(pause_after_writing_files = FALSE)
 # The counter must be in the global environment so the tracer can see it from inside nCompiler.
 assign("nCompile_call_counter", new.env(), envir = globalenv())
 nCompile_call_counter$n <- 0
-suppressMessages(trace("nCompile", where = asNamespace("nCompiler"),
-      tracer = quote(nCompile_call_counter$n <- nCompile_call_counter$n + 1), print = FALSE))
+suppressMessages(trace("nCompile",
+  where = asNamespace("nCompiler"),
+  tracer = quote(nCompile_call_counter$n <- nCompile_call_counter$n + 1), print = FALSE
+))
 
 # Model and nimbleFunction generators shared by the tests below.
 # foo reads a node of the model.
 # bar reads a node of the model, multiplies it by k, and writes the result back to the model,
 # so it can be checked that it is using the same compiled model as other objects.
 make_test_model <- function() {
-  code <- quote({ mu ~ dnorm(0, 1); for(i in 1:3) y[i] ~ dnorm(mu, 1) })
+  code <- quote({
+    mu ~ dnorm(0, 1)
+    for (i in 1:3) y[i] ~ dnorm(mu, 1)
+  })
   nimbleModel::nimbleModel(code, inits = list(mu = 0.5), data = list(y = 1:3), returnClass = TRUE)$new()
 }
 foo <- nimbleFunction(
   setup = function(m_, node) {},
-  run = function() { ans <- m_[[node]]; return(ans); returnType(double()) },
-  check = FALSE)
+  run = function() {
+    ans <- m_[[node]]
+    return(ans)
+    returnType(double())
+  },
+  check = FALSE
+)
 bar <- nimbleFunction(
   setup = function(m_, node, k) {},
-  run = function() { ans <- k * m_[[node]]; m_[[node]] <<- ans; return(ans); returnType(double()) },
-  check = FALSE)
+  run = function() {
+    ans <- k * m_[[node]]
+    m_[[node]] <<- ans
+    return(ans)
+    returnType(double())
+  },
+  check = FALSE
+)
 
 
 test_that("nimble usage pattern: compileNimble(m) then compileNimble(algo, project = m)", {
@@ -48,7 +64,8 @@ test_that("nimble usage pattern: compileNimble(m) then compileNimble(algo, proje
   comp2 <- compileNimble(algo2, project = cm)
   expect_equal(comp2$run(), 6)
   expect_identical(nimble2:::getNimbleProject(comp2), proj)
-  rm(cm, comp, comp2); gc()
+  rm(cm, comp, comp2)
+  gc()
 })
 
 test_that("without a project argument, a new project is used", {
@@ -77,7 +94,8 @@ test_that("without a project argument, a new project is used", {
   expect_equal(nCompile_call_counter$n, n0)
   expect_identical(comp2$algo, comp)
   expect_equal(nCompiler::value(comp2$m, "mu"), 1)
-  rm(cm, cm2, comp, comp2); gc()
+  rm(cm, cm2, comp, comp2)
+  gc()
 })
 
 test_that("with a project argument, objects compiled in another project get independent compiled copies", {
@@ -95,7 +113,8 @@ test_that("with a project argument, objects compiled in another project get inde
   nCompiler::value(cm1_copy, "mu") <- 2
   expect_equal(nCompiler::value(cm1, "mu"), 0.5)
   expect_error(nimble2:::getNimbleProject(foo(m1, "mu"), stopOnNull = TRUE), "Cannot determine a nimbleProject")
-  rm(cm1, cm2, cm1_copy); gc()
+  rm(cm1, cm2, cm1_copy)
+  gc()
 })
 
 test_that("with legacy_nimble = TRUE, compiled models are shared", {
@@ -123,7 +142,8 @@ test_that("with legacy_nimble = TRUE, compiled models are shared", {
   m2 <- make_test_model()
   cm2 <- compileNimble(m2)
   expect_error(compileNimble(list(foo(m, "mu"), foo(m2, "mu"))), "compiled in different nimbleProjects")
-  rm(cm, comp, comp2, cm2); gc()
+  rm(cm, comp, comp2, cm2)
+  gc()
 })
 
 test_that("reset = TRUE compiles the inputs in a new project", {
@@ -144,7 +164,8 @@ test_that("reset = TRUE compiles the inputs in a new project", {
   nCompiler::value(comp_reset$m, "mu") <- 4
   expect_equal(comp_reset$algo$run(), 4)
   expect_equal(comp$algo$run(), 0.5) # old objects still work, with their own model
-  rm(comp, comp_reset); gc()
+  rm(comp, comp_reset)
+  gc()
 })
 
 # KNOWN ISSUE (separate from the registry; skipped for now).

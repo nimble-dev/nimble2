@@ -73,34 +73,34 @@ nfVar <- function(nf, varName) {
 #'
 #' @details
 #' These functions are similar to R's \code{\link{numeric}}, \code{\link{integer}}, \code{\link{logical}} functions, but they can be used in a nimbleFunction and then compiled using \code{compileNimble}.  Largely for compilation purposes, finer control is provided over initialization behavior.  If \code{init = FALSE}, no initialization will be done, and \code{value}, \code{fillZeros} and \code{recycle} will be ignored.  If \code{init=TRUE} and \code{recycle=TRUE}, then \code{fillZeros} will be ignored, and \code{value} will be repeated (according to R's recycling rule) as much as necessary to fill a vector of length \code{length}.  If \code{init=TRUE} and \code{recycle=FALSE}, then if \code{fillZeros=TRUE}, values of 0 (or FALSE for \code{nimLogical}) will be filled in after \code{value} up to length \code{length}.  Compiled code will be more efficient if unnecessary initialization is not done, but this may or may not be noticeable depending on the situation.
-#' 
-#' When used in a \code{nimbleFunction} (in \code{run} or other member function), \code{numeric}, \code{integer} and \code{logical} are immediately converted to \code{nimNumeric}, \code{nimInteger} and \code{nimLogical}, respectively.  
-#' 
+#'
+#' When used in a \code{nimbleFunction} (in \code{run} or other member function), \code{numeric}, \code{integer} and \code{logical} are immediately converted to \code{nimNumeric}, \code{nimInteger} and \code{nimLogical}, respectively.
+#'
 #' @author Daniel Turek, Christopher Paciorek, Perry de Valpine
 #' @aliases numeric
 #' @seealso \code{\link{nimMatrix}}, \code{\link{nimArray}}
 #' @export
 nimNumeric <- function(length = 0, value = 0, init = TRUE, fillZeros = TRUE, recycle = TRUE) {
-    fillValue <- makeFillValue(value, 'double', init)
-    makeReturnVector(fillValue, length, recycle)
+  fillValue <- makeFillValue(value, "double", init)
+  makeReturnVector(fillValue, length, recycle)
 }
 
 #' @rdname nimNumeric
 #' @export
 nimInteger <- function(length = 0, value = 0, init = TRUE, fillZeros = TRUE, recycle = TRUE) {
-    fillValue <- makeFillValue(value, 'integer', init)
-    makeReturnVector(fillValue, length, recycle)
+  fillValue <- makeFillValue(value, "integer", init)
+  makeReturnVector(fillValue, length, recycle)
 }
 
 #' @rdname nimNumeric
 #' @export
 nimLogical <- function(length = 0, value = 0, init = TRUE, fillZeros = TRUE, recycle = TRUE) {
-    fillValue <- makeFillValue(value, 'logical', init)
-    makeReturnVector(fillValue, length, recycle)
+  fillValue <- makeFillValue(value, "logical", init)
+  makeReturnVector(fillValue, length, recycle)
 }
 
 #' Creates matrix or array objects for use in nimbleFunctions
-#' 
+#'
 #' In a \code{nimbleFunction}, \code{matrix} and \code{array} are identical to \code{nimMatrix} and \code{nimArray}, respectively
 #'
 #' @aliases nimArray matrix array
@@ -121,79 +121,83 @@ nimLogical <- function(length = 0, value = 0, init = TRUE, fillZeros = TRUE, rec
 #' When used in a \code{nimbleFunction} (in \code{run} or other member function), \code{matrix} and \code{array} are immediately converted to \code{nimMatrix} and \code{nimArray}, respectively.
 #'
 #' The \code{nDim} argument is only necessary for a use like \code{dim <- c(2, 3, 4); A <- nimArray(0, dim = dim, nDim = 3)}.  It is necessary because the NIMBLE compiler must determine during compilation that \code{A} will be a 3-dimensional numeric array.  However, the compiler doesn't know for sure what the length of \code{dim} will be at run time, only that it is a vector.  On the other hand,   \code{A <- nimArray(0, dim = c(2, 3, 4))} is allowed because the compiler can directly determine that a vector of length three is constructed inline for the \code{dim} argument.
-#' 
+#'
 #' @author Daniel Turek and Perry de Valpine
 #' @seealso \code{\link{nimNumeric}} \code{\link{nimInteger}} \code{\link{nimLogical}}
 #' @export
-nimMatrix <- function(value = 0, nrow = NA, ncol = NA, init = TRUE, fillZeros = TRUE, recycle = TRUE, type = 'double') {
-    ## the -1's are used because nimble does not allow both missingness and default value
-    ## but R's matrix function relies on both possibilities
-    fillValue <- makeFillValue(value, type, init)
-    mnrow <- missing(nrow) || is.na(nrow)
-    mncol <- missing(ncol) || is.na(ncol)
-    if(mnrow)
-        if(mncol) {
-            base::matrix(fillValue)
-        } else {
-            nrow <- ceiling( length(fillValue) / ncol )
-            fillValue <- makeReturnVector(fillValue, nrow * ncol, recycle)
-            base::matrix(fillValue, ncol = ncol, nrow = nrow)
-        }
-    else
-        if(mncol) {
-            ncol <- ceiling( length(fillValue) / nrow )
-            fillValue <- makeReturnVector(fillValue, nrow * ncol, recycle)
-            base::matrix(fillValue, nrow = nrow, ncol = ncol)
-        } else {
-            fillValue <- makeReturnVector(fillValue, ncol*nrow, recycle)
-            base::matrix(fillValue, nrow = nrow, ncol = ncol)
-        }
+nimMatrix <- function(value = 0, nrow = NA, ncol = NA, init = TRUE, fillZeros = TRUE, recycle = TRUE, type = "double") {
+  ## the -1's are used because nimble does not allow both missingness and default value
+  ## but R's matrix function relies on both possibilities
+  fillValue <- makeFillValue(value, type, init)
+  mnrow <- missing(nrow) || is.na(nrow)
+  mncol <- missing(ncol) || is.na(ncol)
+  if (mnrow) {
+    if (mncol) {
+      base::matrix(fillValue)
+    } else {
+      nrow <- ceiling(length(fillValue) / ncol)
+      fillValue <- makeReturnVector(fillValue, nrow * ncol, recycle)
+      base::matrix(fillValue, ncol = ncol, nrow = nrow)
+    }
+  } else if (mncol) {
+    ncol <- ceiling(length(fillValue) / nrow)
+    fillValue <- makeReturnVector(fillValue, nrow * ncol, recycle)
+    base::matrix(fillValue, nrow = nrow, ncol = ncol)
+  } else {
+    fillValue <- makeReturnVector(fillValue, ncol * nrow, recycle)
+    base::matrix(fillValue, nrow = nrow, ncol = ncol)
+  }
 }
 
 
 #' @rdname nimMatrix
 #' @export
-nimArray <- function(value = 0, dim = c(1, 1), init = TRUE, fillZeros = TRUE, recycle = TRUE, nDim, type = 'double') {
-    if(!missing(nDim)) dim <- dim[1:nDim]
-    fillValue <- makeFillValue(value, type, init)
-    fillValue <- makeReturnVector(fillValue, prod(dim), recycle)
-    if(length(dim) == 1) fillValue
-    else base::array(fillValue, dim)
+nimArray <- function(value = 0, dim = c(1, 1), init = TRUE, fillZeros = TRUE, recycle = TRUE, nDim, type = "double") {
+  if (!missing(nDim)) dim <- dim[1:nDim]
+  fillValue <- makeFillValue(value, type, init)
+  fillValue <- makeReturnVector(fillValue, prod(dim), recycle)
+  if (length(dim) == 1) {
+    fillValue
+  } else {
+    base::array(fillValue, dim)
+  }
 }
 
 makeFillValue <- function(value, type, init) {
-    fillValue <- if(init) value else 0
-    fillValueTyped <- switch(type,
-                             double = as.numeric(fillValue),
-                             integer = as.integer(fillValue),
-                             logical = as.logical(fillValue),
-                             stop('unknown type argument'))
-    return(fillValueTyped)
+  fillValue <- if (init) value else 0
+  fillValueTyped <- switch(type,
+    double = as.numeric(fillValue),
+    integer = as.integer(fillValue),
+    logical = as.logical(fillValue),
+    stop("unknown type argument")
+  )
+  return(fillValueTyped)
 }
 
 makeReturnVector <- function(fillValue, length, recycle) {
-    if(length(fillValue) == 1) {
-        if(recycle)
-            rep(fillValue, length)
-        else
-            c(fillValue, as(rep(0, max(length-1, 0)), class(fillValue)))
+  if (length(fillValue) == 1) {
+    if (recycle) {
+      rep(fillValue, length)
+    } else {
+      c(fillValue, as(rep(0, max(length - 1, 0)), class(fillValue)))
     }
-    else {
-        if(length(fillValue) != length) {
-            if(length(fillValue) < length) {
-                ##warning(paste0("Not enough values provided for vector of length ",length, ".")) 
-                if(recycle)
-                    rep(fillValue, length.out = length)
-                else
-                    c(fillValue, as(rep(0, length-length(fillValue)), class(fillValue)))
-            } else {
-                ##warning(paste0("Too many values provided for vector of length ",length, ".")) 
-                fillValue[1:length]
-            }
+  } else {
+    if (length(fillValue) != length) {
+      if (length(fillValue) < length) {
+        ## warning(paste0("Not enough values provided for vector of length ",length, "."))
+        if (recycle) {
+          rep(fillValue, length.out = length)
         } else {
-            fillValue
+          c(fillValue, as(rep(0, length - length(fillValue)), class(fillValue)))
         }
+      } else {
+        ## warning(paste0("Too many values provided for vector of length ",length, "."))
+        fillValue[1:length]
+      }
+    } else {
+      fillValue
     }
+  }
 }
 
 #' NIMBLE language functions for R-like vector construction
@@ -213,25 +217,25 @@ makeReturnVector <- function(fillValue, length, recycle) {
 #'
 #' @details
 #' For \code{c}, \code{rep}, \code{seq}, these functions are NIMBLE's version of similar R functions, e.g., \code{nimRep} for \code{rep}.   In a \code{nimbleFunction}, either the R name (e.g., \code{rep}) or the NIMBLE name (e.g., \code{nimRep}) can be used.  If the R name is used, it will be converted to the NIMBLE name. For \code{which}, \code{length}, \code{diag}, \code{seq_along}, \code{is.na}, \code{is.nan}, \code{any}, \code{all} simply use the standard name without \code{"nim"}. These functions largely mimic (see exceptions below) the behavior of their R counterparts, but they can be compiled in a \code{nimbleFunction} using \code{compileNimble}.
-#' 
+#'
 #' \code{nimC} is NIMBLE's version of \code{c} and behaves identically.
 #'
 #' \code{nimRep} is NIMBLE's version of \code{rep}.  It should behave identically to \code{rep}.  There are no NIMBLE versions of \code{rep.int} or \code{rep_len}.
 #'
-#' \code{nimSeq} is NIMBLE's version of \code{seq}.  It behaves like \code{seq} with support for \code{from}, \code{to}, \code{by} and \code{length.out} arguments.  The \code{along.with} argument is not supported.  There are no NIMBLE versions of \code{seq.int}, \code{seq_along} or \code{seq_len}, with the exception that \code{seq_along} can take a nimbleFunctionList as an argument to provide the index range of a for-loop (\href{https://r-nimble.org/manual/cha-welcome-nimble.html}{User Manual} Ch. 13). 
+#' \code{nimSeq} is NIMBLE's version of \code{seq}.  It behaves like \code{seq} with support for \code{from}, \code{to}, \code{by} and \code{length.out} arguments.  The \code{along.with} argument is not supported.  There are no NIMBLE versions of \code{seq.int}, \code{seq_along} or \code{seq_len}, with the exception that \code{seq_along} can take a nimbleFunctionList as an argument to provide the index range of a for-loop (\href{https://r-nimble.org/manual/cha-welcome-nimble.html}{User Manual} Ch. 13).
 #'
 #' \code{which} behaves like the R version but without support for \code{arr.ind} or \code{useNames} arguments.
 #'
 #' \code{diag} behaves like the R version but without support for the \code{nrow} and \code{ncol} arguments.
 #'
 #' \code{length} behaves like the R version.
-#' 
+#'
 #' \code{seq_along} behaves like the R version.
 #'
 #' \code{is.na} behaves like the R version but does not correctly handle \code{NA} values from R that are type 'logical', so convert these using \code{as.numeric()} before passing from R to NIMBLE.
-#' 
-#' \code{is.nan} behaves like the R version, but treats \code{NA} of type 'double' as being \code{NaN} and \code{NA} of type 'logical' as not being \code{NaN}. 
-#' 
+#'
+#' \code{is.nan} behaves like the R version, but treats \code{NA} of type 'double' as being \code{NaN} and \code{NA} of type 'logical' as not being \code{NaN}.
+#'
 #' \code{any} behaves like the R version but takes only one argument and treats NAs as \code{FALSE}.
 #'
 #' \code{all} behaves like the R version but takes only one argument and treats NAs as \code{FALSE}.
@@ -241,5 +245,5 @@ NULL
 #' @rdname nimble-R-functions
 #' @export
 nimC <- function(...) {
-    c(...)
+  c(...)
 }

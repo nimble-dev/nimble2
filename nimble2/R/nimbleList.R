@@ -1,6 +1,6 @@
 # In nimble2, we implement nimbleList using nClass.
 # We don't need to use nClassBuilder because nimbleList types
-# (i.e. with specific fields) are not created dynamically within 
+# (i.e. with specific fields) are not created dynamically within
 # run code, such as for nCompiler::nList.
 
 nimbleListBase_nClass <- nCompiler:::nClass(
@@ -9,13 +9,15 @@ nimbleListBase_nClass <- nCompiler:::nClass(
   Rpublic = list(
     initialize = function(...) {
       super$initialize(...)
-      if(!self$isCompiled()) {
+      if (!self$isCompiled()) {
         valueList <- list(...)
-        for(vn in names(valueList))
+        for (vn in names(valueList)) {
           self[[vn]] <- valueList[[vn]]
+        }
       }
       self$dummy_ <- 0
-    })
+    }
+  )
 )
 
 # nimbleList <- function(...) {
@@ -51,63 +53,82 @@ nimbleList <- function(..., predefined = FALSE, .ID = FALSE, env = parent.frame(
   message("must deal with env, where and other nimbleList arguments")
 
   # Start of code copied from nimble::nimbleList
-    ## This manual override allows us to generate static code by temporarily setting
+  ## This manual override allows us to generate static code by temporarily setting
   ## predefined = FALSE for all predefined nimbleLists.
-  GENERATE_STATIC_CODE <- FALSE  ## Enable this before using generateStaticCode.R.
-  if(GENERATE_STATIC_CODE) predefined <- FALSE
-  
+  GENERATE_STATIC_CODE <- FALSE ## Enable this before using generateStaticCode.R.
+  if (GENERATE_STATIC_CODE) predefined <- FALSE
+
   ## 3 possibilities: arguments as expressions, arguments as list created within call,
   ## arguments as list created outside of call
-  
-  Call <-  match.call(expand.dots = TRUE)
+
+  Call <- match.call(expand.dots = TRUE)
   nms <- names(Call)
-  if(any(nms == 'name')) {
-    if(!is.character(Call[[which(nms == "name")]]))
+  if (any(nms == "name")) {
+    if (!is.character(Call[[which(nms == "name")]])) {
       stop("Elements of a nimbleList cannot be named `name`.")
-    Call <- Call[-which(names(Call) == 'name')]
+    }
+    Call <- Call[-which(names(Call) == "name")]
   }
   nms <- names(Call)
-  if(any(nms == 'predefined')) {
-    if(!is.logical(Call[[which(nms == "predefined")]]))
+  if (any(nms == "predefined")) {
+    if (!is.logical(Call[[which(nms == "predefined")]])) {
       stop("Elements of a nimbleList cannot be named `predefined`.")
-    Call <- Call[-which(nms == 'predefined')]
+    }
+    Call <- Call[-which(nms == "predefined")]
   }
   nms <- names(Call)
-  if(any(nms == 'where')) {
-    if(!is.environment(Call[[which(nms == "where")]]))
+  if (any(nms == "where")) {
+    if (!is.environment(Call[[which(nms == "where")]])) {
       stop("Elements of a nimbleList cannot be named `where`.")
-    Call <- Call[-which(nms == 'where')]
+    }
+    Call <- Call[-which(nms == "where")]
   }
-  if(length(Call) < 2)
+  if (length(Call) < 2) {
     stop("No arguments specified for nimbleList")
+  }
   argList <- list()
-  
+
   ## left side of || statement catches list(...) arguments
   ## right side captures name of a previously defined list
-  if((is.call(Call[[2]]) && deparse(Call[[2]][[1]]) == 'list') || 
-     (!is.call(Call[[2]]) && is.list(eval(Call[[2]], envir = parent.frame())))){ 
+  if ((is.call(Call[[2]]) && deparse(Call[[2]][[1]]) == "list") ||
+    (!is.call(Call[[2]]) && is.list(eval(Call[[2]], envir = parent.frame())))) {
     callList <- eval(Call[[2]], envir = parent.frame())
-    for(iArg in seq_along(callList)){
-      argList[[iArg]] <- list(name = callList[[iArg]]$name,
-                              type = callList[[iArg]]$type,
-                              dim = callList[[iArg]]$dim)
+    for (iArg in seq_along(callList)) {
+      argList[[iArg]] <- list(
+        name = callList[[iArg]]$name,
+        type = callList[[iArg]]$type,
+        dim = callList[[iArg]]$dim
+      )
+    }
+  } else { ## if arguments are expressions e.g. nimListDouble = double(2)
+    for (iArg in 2:length(Call)) {
+      argList[[iArg - 1]] <- list(
+        name = names(Call)[iArg],
+        type = deparse(Call[[iArg]][[1]])
+      )
+      argList[[iArg - 1]]$dim <- if (length(Call[[iArg]]) > 1) {
+        deparse(Call[[iArg]][[2]])
+      } else {
+        0
+      }
     }
   }
-  else{  ## if arguments are expressions e.g. nimListDouble = double(2)
-    for(iArg in 2:length(Call)){
-      argList[[iArg-1]] <- list(name = names(Call)[iArg],
-                                type = deparse(Call[[iArg]][[1]]))
-      argList[[iArg-1]]$dim  <- if(length(Call[[iArg]])>1) deparse(Call[[iArg]][[2]])
-      else 0
-    }
-  }
-  
-  types <- list(vars = sapply(argList, function(x){return(x$name)}),
-                types =  sapply(argList, function(x){return(x$type)}),
-                dims =  sapply(argList, function(x){return(x$dim)}))
-  
-  if(any(c('name','predefined','where') %in% types$vars))
+
+  types <- list(
+    vars = sapply(argList, function(x) {
+      return(x$name)
+    }),
+    types = sapply(argList, function(x) {
+      return(x$type)
+    }),
+    dims = sapply(argList, function(x) {
+      return(x$dim)
+    })
+  )
+
+  if (any(c("name", "predefined", "where") %in% types$vars)) {
     stop("Elements of a nimbleList cannot be named `name`, `predefined` or `where`.")
+  }
   # End of code copied directly from nimble::nimbleList
 
   hashedID <- make_nimbleList_hashID(types)
@@ -115,97 +136,102 @@ nimbleList <- function(..., predefined = FALSE, .ID = FALSE, env = parent.frame(
   if (isTRUE(.ID)) {
     return(cpp_classname)
   }
-  ans <- make_nimbleList_nClass(types, 
-                                name = cpp_classname,
-                                predefined = predefined,
-                                where = where)
+  ans <- make_nimbleList_nClass(types,
+    name = cpp_classname,
+    predefined = predefined,
+    where = where
+  )
   ans
 }
 class(nimbleList) <- c("function", "nClassBuilder")
 
 nimbleListDefClass <- setRefClass(
-    ## This class holds a list of type information such as
-    ## A = double(1), B = integer(2)
-    ## The types need not be numeric.
-    ## In general, ideally, they could be another nimbleList or a nimbleFunction
-    Class = "nimbleListDefClass",
-    fields = list(types = 'ANY',
-                  className = 'ANY',
-                  predefined = 'ANY')
+  ## This class holds a list of type information such as
+  ## A = double(1), B = integer(2)
+  ## The types need not be numeric.
+  ## In general, ideally, they could be another nimbleList or a nimbleFunction
+  Class = "nimbleListDefClass",
+  fields = list(
+    types = "ANY",
+    className = "ANY",
+    predefined = "ANY"
+  )
 )
 
 make_nimbleList_nClass <- function(types,
                                    name = NULL,
                                    predefined = predefined,
-                                   where =  parent.frame()) {
-
-  if(is.na(name)) name <- nf_refClassLabelMaker()
-  nlDefClassObject <- nimbleListDefClass(types = types, className = name, predefined = predefined) 
+                                   where = parent.frame()) {
+  if (is.na(name)) name <- nf_refClassLabelMaker()
+  nlDefClassObject <- nimbleListDefClass(types = types, className = name, predefined = predefined)
   basicTypes <- c("double", "integer", "character", "logical")
   nestedListGens <- list()
-  for(i in seq_along(types$types)){
-    if(!(types$types[i] %in% basicTypes)){
-      for(searchEnvironment in c(parent.frame(), globalenv())){
+  for (i in seq_along(types$types)) {
+    if (!(types$types[i] %in% basicTypes)) {
+      for (searchEnvironment in c(parent.frame(), globalenv())) {
         ## It could become necessary to add "asNamespace("nimble")" to the searchEnvironment list
         found_nlGen <- try(get(types$types[i], envir = searchEnvironment), silent = TRUE)
-        if(!inherits(found_nlGen, 'try-error')){
-          if(is.nlGenerator(found_nlGen))
+        if (!inherits(found_nlGen, "try-error")) {
+          if (is.nlGenerator(found_nlGen)) {
             nestedListGens[[types$vars[i]]] <- found_nlGen
+          }
           break
         }
       }
     }
   }
-  
+
   # Above code is all copied from nimble.
   # From here down it is used for nimble2 and nCompiler.
   # It could be written anew and made cleaner, but this provides
   # a simple path from nimble to nimble2
-  
+
   # This initialize is copied and lightly modified from nimble
-  initialize <- function(...){
+  initialize <- function(...) {
     super$initialize(...)
-    if(!isCompiled()) {
+    if (!isCompiled()) {
       NLdef <- self$nimbleListDef
       nimListFields <- NLdef$types$vars
       initializeFields <- list(...)
       nonInitializeFields <- which(!(nimListFields %in% names(initializeFields)))
       ## initialize uninitialized fields
-      for(i in nonInitializeFields){
+      for (i in nonInitializeFields) {
         thisType <- NLdef$types$types[i]
-        thisDim <-  NLdef$types$dims[i]
-        if(thisType == 'character'){
-          initValue  <- ""
-        }
-        else if(thisType %in% c('integer', 'double')){
-          if(thisDim == 0)
+        thisDim <- NLdef$types$dims[i]
+        if (thisType == "character") {
+          initValue <- ""
+        } else if (thisType %in% c("integer", "double")) {
+          if (thisDim == 0) {
             initValue <- 0
-          if(thisDim == 1)
+          }
+          if (thisDim == 1) {
             initValue <- integer(0)
-          if(thisDim == 2)
+          }
+          if (thisDim == 2) {
             initValue <- matrix(0, 0, 0)
-          if(thisDim > 2)
+          }
+          if (thisDim > 2) {
             initValue <- array(0, dim = rep(0, thisDim))
-        }
-        else if(thisType == 'logical'){
+          }
+        } else if (thisType == "logical") {
           initValue <- FALSE
-        }
-        else if(nimListFields[i] %in% names(nestedListGenList)){
+        } else if (nimListFields[i] %in% names(nestedListGenList)) {
           initValue <- nestedListGenList[[nimListFields[i]]]$new()
+        } else {
+          (stop(paste("unrecognized type given for nimbleList element", nimListFields[i])))
         }
-        else(stop(paste("unrecognized type given for nimbleList element", nimListFields[i])))
-        eval(substitute(self[[nimListFields[i]]] <<-initValue))
+        eval(substitute(self[[nimListFields[i]]] <<- initValue))
       }
-    } 
+    }
   }
   CpublicVars <- character(length(types$vars))
   CpublicVars <- paste0("nArray(nDim=", types$dims, ", type='", types$types, "')")
   CpublicVars <- as.list(CpublicVars)
   # CpublicVars <- paste0("numericArray(nDim=", types$dims, ")") |> as.list()
   names(CpublicVars) <- types$vars
-  
+
   classname <- name
-  
+
   generator_code <- substitute(
     nCompiler::nClass(
       classname = CLASSNAME,
@@ -234,21 +260,23 @@ make_nimbleList_nClass <- function(types,
 
 ## helper function for creating argument lists
 nf_createAList <- function(argNames) {
-  aListText <- if(length(argNames) > 0) {
-    argNames <- paste0('`', argNames, '`')
-    paste0('alist(', paste(argNames,'=',collapse=','), ')')
-  } else { 'alist()' }
+  aListText <- if (length(argNames) > 0) {
+    argNames <- paste0("`", argNames, "`")
+    paste0("alist(", paste(argNames, "=", collapse = ","), ")")
+  } else {
+    "alist()"
+  }
   eval(parse(text = aListText, keep.source = FALSE))
 }
 
 # Used by keyword processing:
 makeNimbleListTemplateWithBlankFirstArg <- function(nlDef) {
-  vars <- c('.LEFTSIDE', nlDef$types$vars)
-  functionAsList <- list(as.name('function'))
+  vars <- c(".LEFTSIDE", nlDef$types$vars)
+  functionAsList <- list(as.name("function"))
   functionAsList[2] <- list(NULL)
-  if(length(vars) > 0) {
-      argsList <- nf_createAList(vars)
-      functionAsList[[2]] <- as.pairlist(argsList)
+  if (length(vars) > 0) {
+    argsList <- nf_createAList(vars)
+    functionAsList[[2]] <- as.pairlist(argsList)
   }
   functionAsList[[3]] <- quote({})
   eval(as.call(functionAsList))
@@ -275,31 +303,33 @@ is.nl <- function(obj) {
 #' @export
 #'
 #' @details
-#' 
-#' This function creates \code{nimbleType} objects, which can be used to define the elements of a \code{\link{nimbleList}}.  
-#' 
+#'
+#' This function creates \code{nimbleType} objects, which can be used to define the elements of a \code{\link{nimbleList}}.
+#'
 #' The \code{type} argument can be chosen from among \code{character}, \code{double}, \code{integer}, and \code{logical},
 #' or can be the name of a previously created \code{\link{nimbleList} definition}.
-#' 
+#'
 #' See the NIMBLE \href{https://r-nimble.org/manual/cha-welcome-nimble.html}{User Manual} for additional examples.
-#' 
-#' @examples 
+#'
+#' @examples
 #' nimbleTypeList <- list()
-#' nimbleTypeList[[1]] <- nimbleType(name = 'x', type = 'integer', dim = 0)
-#' nimbleTypeList[[2]] <- nimbleType(name = 'Y', type = 'double', dim = 2)
+#' nimbleTypeList[[1]] <- nimbleType(name = "x", type = "integer", dim = 0)
+#' nimbleTypeList[[2]] <- nimbleType(name = "Y", type = "double", dim = 2)
 #'
 nimbleType <- setRefClass(
-  Class = 'nimbleType',
-  fields = c('name', 'type', 'dim'),
+  Class = "nimbleType",
+  fields = c("name", "type", "dim"),
   methods = list(
-    initialize = function(name, type, dim = NA){
+    initialize = function(name, type, dim = NA) {
       name <<- name
       type <<- type
       dim <<- dim
     },
-    show = function(){
+    show = function() {
       cat("nimbleType object with name ", name, ", type ", type, ", dim ",
-          dim,"\n", sep = "")
+        dim, "\n",
+        sep = ""
+      )
     }
   )
 )

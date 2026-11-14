@@ -24,18 +24,26 @@
 
 nimbleProject_registry_key <- function(obj) {
   # nimbleFunction instances are reference class objects; the project labels them by as.environment.
-  if (is.nf(obj)) return(as.environment(obj))
+  if (is.nf(obj)) {
+    return(as.environment(obj))
+  }
   # models, modelValues, nimbleLists and compiled objects (R6 objects or loadedObjectEnv) are environments
-  if (is.environment(obj)) return(obj)
+  if (is.environment(obj)) {
+    return(obj)
+  }
   NULL
 }
 
 nimbleProject_registry_lookup <- function(obj) {
   key <- nimbleProject_registry_key(obj)
-  if (is.null(key)) return(NULL)
+  if (is.null(key)) {
+    return(NULL)
+  }
   weakrefs <- nimbleProject_registry[[rlang::env_label(key)]]
   for (weakref in weakrefs) {
-    if (identical(rlang::wref_key(weakref), key)) return(rlang::wref_value(weakref))
+    if (identical(rlang::wref_key(weakref), key)) {
+      return(rlang::wref_value(weakref))
+    }
   }
   NULL
 }
@@ -43,7 +51,9 @@ nimbleProject_registry_lookup <- function(obj) {
 # Record that obj was most recently compiled in project, replacing any earlier record.
 nimbleProject_registry_add <- function(obj, project) {
   key <- nimbleProject_registry_key(obj)
-  if (is.null(key)) return(invisible(NULL))
+  if (is.null(key)) {
+    return(invisible(NULL))
+  }
   label <- rlang::env_label(key)
   weakrefs <- nimbleProject_registry[[label]]
   for (i in seq_along(weakrefs)) {
@@ -73,14 +83,19 @@ nimbleProject_registry_lookup_models <- function(objs) {
       return(invisible(NULL))
     }
     key <- nimbleProject_registry_key(obj)
-    if (is.null(key)) return(invisible(NULL))
+    if (is.null(key)) {
+      return(invisible(NULL))
+    }
     label <- rlang::env_label(key)
-    if (!is.null(visited[[label]])) return(invisible(NULL))
+    if (!is.null(visited[[label]])) {
+      return(invisible(NULL))
+    }
     visited[[label]] <- TRUE
     if (inherits(obj, "modelBase_nClass")) {
       project <- nimbleProject_registry_lookup(obj)
-      if (!is.null(project) && !any(vapply(projects, \(x) identical(x, project), logical(1))))
+      if (!is.null(project) && !any(vapply(projects, \(x) identical(x, project), logical(1)))) {
         projects <<- c(projects, list(project))
+      }
     } else if (is.nf(obj)) {
       for (name in nf_getSetupOutputNames(obj)) visit(obj[[name]])
     }
@@ -107,6 +122,8 @@ nimbleProject_registry_prune <- function() {
 # Number of live entries, after pruning. Used for testing.
 nimbleProject_registry_size <- function() {
   nimbleProject_registry_prune()
-  sum(vapply(ls(nimbleProject_registry, all.names = TRUE),
-             \(label) length(nimbleProject_registry[[label]]), integer(1)))
+  sum(vapply(
+    ls(nimbleProject_registry, all.names = TRUE),
+    \(label) length(nimbleProject_registry[[label]]), integer(1)
+  ))
 }

@@ -17,7 +17,7 @@ test_that("nimbleFunctionVirtual works", {
     ),
     methodControl = list(hw = list(required = FALSE))
   )
-  
+
   dNFa <- nimbleFunction(
     contains = baseNF,
     setup = TRUE,
@@ -36,7 +36,7 @@ test_that("nimbleFunctionVirtual works", {
       }
     )
   )
-  
+
   dNFb <- nimbleFunction(
     contains = baseNF,
     setup = TRUE,
@@ -51,11 +51,11 @@ test_that("nimbleFunctionVirtual works", {
       } # NO hw method provided.
     )
   )
-  
+
   obj_a <- dNFa()
   obj_b <- dNFb()
-  comp <- compileNimble(obj_a, obj_b)  
-  
+  comp <- compileNimble(obj_a, obj_b)
+
   obj <- comp$obj_a
   expect_equal(obj$run(1), 3)
   expect_equal(obj$foo(1:3), 4:6)
@@ -64,7 +64,7 @@ test_that("nimbleFunctionVirtual works", {
   expect_equal(obj$run(1), 3)
   expect_equal(obj$foo(1:3), 4:6)
   expect_equal(obj$hw(1:3), 5:7)
-  
+
   obj <- comp$obj_b
   expect_equal(obj$run(1), 3)
   expect_equal(obj$foo(1:3), 4:6)
@@ -73,7 +73,7 @@ test_that("nimbleFunctionVirtual works", {
   expect_equal(obj$run(1), 3)
   expect_equal(obj$foo(1:3), 4:6)
   expect_equal(obj$hw(1:3), 2:4) # base class hw
-  
+
   ## message capturing in testthat is a pain
   ## Check for warnings: foo was required but not provided
   res <- capture_messages(dNFc <- nimbleFunction(
@@ -85,7 +85,7 @@ test_that("nimbleFunctionVirtual works", {
     }
   ))
   expect_true(grepl("[Warning]", res))
-  
+
   ## Check for no warning: run is required but defaults to function(){}, so no warning is issued
   res <- capture_messages(
     dNFc <- nimbleFunction(
@@ -100,7 +100,7 @@ test_that("nimbleFunctionVirtual works", {
     )
   )
   expect_identical(res, character())
-  
+
   useBase <- nimbleFunction(
     setup = function() {
       NFlist <- nimbleFunctionList(baseNF)
@@ -127,6 +127,7 @@ test_that("nimbleFunctionVirtual works", {
   expect_equal(Cans, c(10, 100) + c(6, 4))
   ans <- useBase1$run(c(10, 100), 2)
   expect_equal(ans, Cans)
-  
-  rm(useBase1, CuseBase1); gc()    
+
+  rm(useBase1, CuseBase1)
+  gc()
 })

@@ -50,7 +50,11 @@ messageIfVerbose <- function(...) {
 
 # Determine if a piece of code contains a '['
 hasBracket <- function(code) {
-    if(length(code) < 2) return(FALSE)
-    if(code[[1]] == '[') return(TRUE)
-    FALSE
+  if (length(code) < 2) {
+    return(FALSE)
+  }
+  if (code[[1]] == "[") {
+    return(TRUE)
+  }
+  FALSE
 }

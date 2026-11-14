@@ -7,15 +7,15 @@
 ## 5) nimbleListDef is created outside of the nimbleFunction, nimbleListDef$new() used to create new nimbleList outside of the nimbleFunction,
 ##    nimbleList passed as argument to nimbleFunction
 
-source(system.file(file.path('tests', 'testthat', 'test_utils.R'), package = 'nimble2'))
+source(system.file(file.path("tests", "testthat", "test_utils.R"), package = "nimble2"))
 # Tests copied from nimble run with legacy_nimble = TRUE, so nimble2 follows nimble's behavior where they differ.
-legacyNimbleSetting <- nimbleOptions('legacy_nimble')
+legacyNimbleSetting <- nimbleOptions("legacy_nimble")
 nimbleOptions(legacy_nimble = TRUE)
 on.exit(nimbleOptions(legacy_nimble = legacyNimbleSetting), add = TRUE)
 
-RwarnLevel <- options('warn')$warn
+RwarnLevel <- options("warn")$warn
 options(warn = 1)
-nimbleVerboseSetting <- nimbleOptions('verbose')
+nimbleVerboseSetting <- nimbleOptions("verbose")
 nimbleOptions(verbose = FALSE)
 
 ######## (works in nimble2)
@@ -26,10 +26,10 @@ test_that("nimbleList test 1: return objects are nimbleLists", {
   testListDef1 <- nimbleList(nlScalar = double(0), nlVector = double(1), nlMatrix = double(2))
   # temporarilyAssignInGlobalEnv(testListDef1)
   nlTestFunc1 <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       doubleMatrix <- diag(1)
     },
-    run = function(){
+    run = function() {
       doubleScalar <- 1
       doubleVector <- numeric(2, 1)
       newList1 <- testListDef1$new(nlVector = doubleVector, nlMatrix = doubleMatrix)
@@ -55,7 +55,8 @@ test_that("nimbleList test 1: return objects are nimbleLists", {
   #
   expect_true(is.nl(RnimbleList))
   expect_true(is.nl(CnimbleList))
-  rm(RnimbleList, CnimbleList); gc()
+  rm(RnimbleList, CnimbleList)
+  gc()
 })
 
 
@@ -65,12 +66,12 @@ test_that("nimbleList test 1: return objects are nimbleLists", {
 ########
 test_that("nimbleList test 2: return objects are nimbleLists", {
   nlTestFunc2 <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       testListDef2 <- nimbleList(nlScalar = double(0))
       doubleMatrix <- diag(1)
     },
-    run = function(){
-      newList2 <- testListDef2$new(nlScalar = doubleMatrix[1,1]*2)
+    run = function() {
+      newList2 <- testListDef2$new(nlScalar = doubleMatrix[1, 1] * 2)
       returnType(testListDef2())
       return(newList2)
     }
@@ -78,7 +79,7 @@ test_that("nimbleList test 2: return objects are nimbleLists", {
 
   testInst <- nlTestFunc2()
   RnimbleList <- testInst$run()
-  CtestInst <- compileNimble(testInst, control = list(debug =  F))
+  CtestInst <- compileNimble(testInst, control = list(debug = F))
   CnimbleList <- CtestInst$run()
 
   ## test for correct values of R nimbleList
@@ -95,12 +96,12 @@ test_that("nimbleList test 2: return objects are nimbleLists", {
 ########
 test_that("nimbleList test 3: return objects are nimbleLists", {
   nlTestFunc3 <- nimbleFunction(
-    setup = function(){
-      testTypes <- list(nimbleType(name = 'nlCharacter', type = 'character', dim = 0))
+    setup = function() {
+      testTypes <- list(nimbleType(name = "nlCharacter", type = "character", dim = 0))
       testListDef3 <- nimbleList(testTypes)
       setupList3 <- testListDef3$new(nlCharacter = "hello world")
     },
-    run = function(){
+    run = function() {
       returnType(testListDef3())
       return(setupList3)
     }
@@ -128,12 +129,12 @@ test_that("nimbleList test 3: return objects are nimbleLists", {
 ########
 test_that("nimbleList test 3a: return objects are nimbleLists", {
   nlTestFunc3a <- nimbleFunction(
-    setup = function(){
-      testTypes <- list(nimbleType(name = 'nlCharacters', type = 'character', dim = 1))
+    setup = function() {
+      testTypes <- list(nimbleType(name = "nlCharacters", type = "character", dim = 1))
       testListDef3a <- nimbleList(testTypes)
       setupList3a <- testListDef3a$new(nlCharacters = c("hello", "world"))
     },
-    run = function(){
+    run = function() {
       returnType(testListDef3a())
       return(setupList3a)
     }
@@ -160,12 +161,12 @@ test_that("nimbleList test 3a: return objects are nimbleLists", {
 ########
 test_that("nimbleList test 3b: return objects are nimbleLists", {
   nlTestFunc3b <- nimbleFunction(
-    setup = function(){
-      testTypes <- list(nimbleType(name = 'nlCharacters', type = 'character', dim = 1))
+    setup = function() {
+      testTypes <- list(nimbleType(name = "nlCharacters", type = "character", dim = 1))
       testListDef3b <- nimbleList(testTypes)
-      charVec <- c('hello', 'world')
+      charVec <- c("hello", "world")
     },
-    run = function(){
+    run = function() {
       runList3b <- testListDef3b$new(nlCharacters = charVec)
       returnType(testListDef3b())
       return(runList3b)
@@ -194,25 +195,25 @@ test_that("nimbleList test 3b: return objects are nimbleLists", {
 ## This test does not use nimble's active binding system.
 ########
 test_that("nimbleList test 4: return objects are nimbleLists", {
-  testListDef4 <- nimbleList(list(nimbleType(name = 'nlCharacter', type = 'character', dim = 0)))
-#  temporarilyAssignInGlobalEnv(testListDef4)
+  testListDef4 <- nimbleList(list(nimbleType(name = "nlCharacter", type = "character", dim = 0)))
+  #  temporarilyAssignInGlobalEnv(testListDef4)
 
   innerNlTestFunc4 <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       setupList4 <- testListDef4$new(nlCharacter = "hello world")
     },
-    run = function(){
+    run = function() {
       returnType(testListDef4())
       return(setupList4)
     }
   )
-#  temporarilyAssignInGlobalEnv(innerNlTestFunc4)
+  #  temporarilyAssignInGlobalEnv(innerNlTestFunc4)
 
   nlTestFunc4 <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       innerFunc4 <- innerNlTestFunc4()
     },
-    run = function(){
+    run = function() {
       outList <- innerFunc4$run()
       returnType(testListDef4())
       return(outList)
@@ -237,25 +238,25 @@ test_that("nimbleList test 4: return objects are nimbleLists", {
 ########
 test_that("nimbleList test 5: return objects are nimbleLists", {
   testListDef5 <- nimbleList(nlCharacter = character(0))
-  #temporarilyAssignInGlobalEnv(testListDef5)
+  # temporarilyAssignInGlobalEnv(testListDef5)
 
   innerNlTestFunc5 <- nimbleFunction(
-    setup = function(listDef){
+    setup = function(listDef) {
       innerSetupList5 <- listDef$new(nlCharacter = "hello world")
     },
-    run = function(){
+    run = function() {
       returnType(testListDef5())
       return(innerSetupList5)
     }
   )
-  #temporarilyAssignInGlobalEnv(innerNlTestFunc5)
+  # temporarilyAssignInGlobalEnv(innerNlTestFunc5)
 
   nlTestFunc5 <- nimbleFunction(
-    setup = function(listDef){
+    setup = function(listDef) {
       innerFunc5 <- innerNlTestFunc5(listDef)
       outerSetupList5 <- listDef$new(nlCharacter = "goodbye!")
     },
-    run = function(){
+    run = function() {
       innerNimList <- innerFunc5$run()
       innerNimList <- outerSetupList5
       returnType(testListDef5())
@@ -282,23 +283,23 @@ test_that("nimbleList test 5: return objects are nimbleLists", {
 ########
 test_that("nimbleList test 6: return objects are nimbleLists", {
   innerNlTestFunc6 <- nimbleFunction(
-    setup = function(nimListDef){
+    setup = function(nimListDef) {
       setupList6 <- nimListDef$new(nlCharacter = "hello world")
     },
-    run = function(){
+    run = function() {
       returnType(nimListDef())
       return(setupList6)
     }
   )
 
-  #temporarilyAssignInGlobalEnv(innerNlTestFunc6)
+  # temporarilyAssignInGlobalEnv(innerNlTestFunc6)
   nlTestFunc6 <- nimbleFunction(
-    setup = function(){
-      testTypes <- list(nimbleType('nlCharacter', 'character', 0))
+    setup = function() {
+      testTypes <- list(nimbleType("nlCharacter", "character", 0))
       testListDef6 <- nimbleList(testTypes)
       innerFunc6 <- innerNlTestFunc6(testListDef6)
     },
-    run = function(){
+    run = function() {
       outList <- innerFunc6$run()
       returnType(testListDef6())
       return(outList)
