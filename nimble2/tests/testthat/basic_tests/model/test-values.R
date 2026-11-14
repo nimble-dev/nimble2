@@ -5,7 +5,7 @@ nimbleOptions(enableDerivs = FALSE)
 
 nCompiler::nOptions(pause_after_writing_files = FALSE)
 
-#BROWSE_COMPILE_NIMBLE <- FALSE
+# BROWSE_COMPILE_NIMBLE <- FALSE
 
 message("values needs updating to work with indexing singletons and blanks.")
 
@@ -17,15 +17,17 @@ test_that("values(model, nodes) works", {
     for (i in 1:5) {
       y[i] ~ dnorm(mu, var = tau)
     }
-    for(i in 1:5) {
-      for(j in 1:5) {
+    for (i in 1:5) {
+      for (j in 1:5) {
         z[i, j] ~ dnorm(mu, var = tau)
       }
     }
   })
 
-  inits <- list(tau = 25, mu = 0,
-                z = matrix(rnorm(25), nrow = 5))
+  inits <- list(
+    tau = 25, mu = 0,
+    z = matrix(rnorm(25), nrow = 5)
+  )
   data <- list(y = rnorm(5))
 
   mclass <- nimbleModel::nimbleModel(code, inits = inits, data = data, returnClass = TRUE)
@@ -73,8 +75,10 @@ test_that("values(model, nodes) works", {
   #                 nimbleModel::varRangeClass$new("z"))
   # multiCopier <- nimbleModel:::makeMultiCopier(m, nodes)
 
-  nodes <- list(nimbleModel::varRangeClass$new("y[1:3]"),
-                nimbleModel::varRangeClass$new("z[2:4, 1:3]"))
+  nodes <- list(
+    nimbleModel::varRangeClass$new("y[1:3]"),
+    nimbleModel::varRangeClass$new("z[2:4, 1:3]")
+  )
 
   nf1 <- nf(m, nodes)
   comp <- compileNimble(nf1, m)
@@ -83,21 +87,25 @@ test_that("values(model, nodes) works", {
   #
   # uncompiled
   expectedU <- c(m$y[1:3], as.numeric(m$z[2:4, 1:3]))
-  #nf1$get()
-  expect_equal( expectedU,
-               nf1$get())
+  # nf1$get()
+  expect_equal(
+    expectedU,
+    nf1$get()
+  )
   # compiled
   expected <- c(comp$m$y[1:3], as.numeric(comp$m$z[2:4, 1:3]))
-  expect_equal( expected,
-               comp$nf1$get())
+  expect_equal(
+    expected,
+    comp$nf1$get()
+  )
   expect_equal(expected, expectedU)
 
   ### get_and_use
   #
   # uncompiled
-  expect_equal(nf1$get_and_use(), 2*expectedU + 1 + expectedU)
+  expect_equal(nf1$get_and_use(), 2 * expectedU + 1 + expectedU)
   # compiled
-  expect_equal(comp$nf1$get_and_use(), 2*expected + 1 + expected)
+  expect_equal(comp$nf1$get_and_use(), 2 * expected + 1 + expected)
 
   ### set
   #
@@ -117,13 +125,14 @@ test_that("values(model, nodes) works", {
   new_values <- rnorm(length(expected))
   nf1$set_with_use(new_values)
   expectedU <- c(m$y[1:3], as.numeric(m$z[2:4, 1:3]))
-  expect_equal(3*new_values, expectedU)
+  expect_equal(3 * new_values, expectedU)
 
   comp$nf1$set_with_use(new_values)
   expected <- c(comp$m$y[1:3], as.numeric(comp$m$z[2:4, 1:3]))
-  expect_equal(3*new_values, expected)
+  expect_equal(3 * new_values, expected)
   comp$nf1 <- comp$m <- NULL
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })
 
 test_that("values(model, nodes[i], mode = ...) works", {
@@ -133,8 +142,8 @@ test_that("values(model, nodes[i], mode = ...) works", {
     for (i in 1:5) {
       y[i] ~ dnorm(mu, 1)
     }
-    for(i in 1:5) {
-      for(j in 1:5) {
+    for (i in 1:5) {
+      for (j in 1:5) {
         z[i, j] ~ dnorm(mu, 1)
       }
     }
@@ -223,7 +232,8 @@ test_that("values(model, nodes[i], mode = ...) works", {
     expect_error(fn$set_raw(1L, c(1, 2)))
   }
   comp$nf1 <- comp$m <- NULL
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })
 
 test_that("values(model, nodes[i], mode = \"node\") works", {
@@ -323,7 +333,8 @@ test_that("values(model, nodes[i], mode = \"node\") works", {
     expect_equal(fn$get_all(), newAll) # unchanged by the failed set
   }
   comp$nf1 <- comp$m <- NULL
-  rm(comp); gc()
+  rm(comp)
+  gc()
 
   # Setup errors: RHS-only elements and logProb variables are not allowed in node mode.
   # Keyword setup code runs in compileNimble, so the errors come from there.
@@ -381,7 +392,8 @@ test_that("values(model, nodes[i], mode = \"node\") shares its instrList with ca
   expect_equal(comp$nf1$get1(1), cm$mu)
   expect_equal(comp$nf1$getAll(), unlist(lapply(1:4, \(k) comp$nf1$get1(k))))
   comp$nf1 <- comp$m <- NULL
-  rm(comp); gc()
+  rm(comp)
+  gc()
 
   # The check still runs when calculate(nodes[i]) has already added the instrList.
   code2 <- quote({

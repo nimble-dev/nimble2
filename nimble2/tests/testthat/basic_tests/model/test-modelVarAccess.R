@@ -12,15 +12,17 @@ test_that("model[[node]] when node is a (possibly indexed) scalar works", {
     for (i in 1:5) {
       y[i] ~ dnorm(mu, var = tau)
     }
-    for(i in 1:5) {
-      for(j in 1:5) {
+    for (i in 1:5) {
+      for (j in 1:5) {
         z[i, j] ~ dnorm(mu, var = tau)
       }
     }
   })
 
-  inits <- list(tau = 25, mu = 0.1,
-                z = matrix(rnorm(25), nrow = 5))
+  inits <- list(
+    tau = 25, mu = 0.1,
+    z = matrix(rnorm(25), nrow = 5)
+  )
   data <- list(y = rnorm(5))
 
   mclass <- nimbleModel::nimbleModel(code, inits = inits, data = data, returnClass = TRUE)
@@ -34,7 +36,7 @@ test_that("model[[node]] when node is a (possibly indexed) scalar works", {
       return(ans)
       returnType(double())
     },
-    check=FALSE
+    check = FALSE
   )
   obj <- foo(m, "y[2]")
   obj2 <- foo(m, "z[3, 2]")
@@ -51,10 +53,11 @@ test_that("model[[node]] when node is a (possibly indexed) scalar works", {
   expect_equal(comp$obj3$run(), mu)
   expect_equal(nCompiler::value(comp$m, "mu"), mu + 1)
 
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })
 
-#library(nimble2)
+# library(nimble2)
 nimbleOptions(enableDerivs = FALSE)
 nCompiler::nOptions(pause_after_writing_files = FALSE)
 BROWSE_COMPILE_NIMBLE <- FALSE
@@ -67,15 +70,17 @@ test_that("model[[node]] when node is non-scalar", {
     for (i in 1:5) {
       y[i] ~ dnorm(mu, var = tau)
     }
-    for(i in 1:5) {
-      for(j in 1:5) {
+    for (i in 1:5) {
+      for (j in 1:5) {
         z[i, j] ~ dnorm(mu, var = tau)
       }
     }
   })
 
-  inits <- list(tau = 25, mu = 0.1,
-                z = matrix(rnorm(25), nrow = 5))
+  inits <- list(
+    tau = 25, mu = 0.1,
+    z = matrix(rnorm(25), nrow = 5)
+  )
   data <- list(y = rnorm(5))
 
   mclass <- nimbleModel::nimbleModel(code, inits = inits, data = data, returnClass = TRUE)
@@ -89,7 +94,7 @@ test_that("model[[node]] when node is non-scalar", {
       return(ans)
       returnType(double(1))
     },
-    check=FALSE
+    check = FALSE
   )
   obj <- foo(m, "y")
   obj2 <- foo(m, "y[2:4]")
@@ -107,34 +112,35 @@ test_that("model[[node]] when node is non-scalar", {
   expect_equal(comp$obj2$run(), y[2:4])
   expect_equal(nCompiler::value(comp$m, "y"), y + c(0, 1, 1, 1, 0))
 
-  expect_equal(comp$obj3$run(), z[1,])
+  expect_equal(comp$obj3$run(), z[1, ])
   zAdd <- z
-  zAdd[,] <- 0
-  zAdd[1,] <- 1
+  zAdd[, ] <- 0
+  zAdd[1, ] <- 1
   expect_equal(nCompiler::value(comp$m, "z"), z + zAdd)
 
   z <- nCompiler::value(comp$m, "z")
-  expect_equal(comp$obj4$run(), z[,2])
-  zAdd[,] <- 0
-  zAdd[,2] <- 1
+  expect_equal(comp$obj4$run(), z[, 2])
+  zAdd[, ] <- 0
+  zAdd[, 2] <- 1
   expect_equal(nCompiler::value(comp$m, "z"), z + zAdd)
 
   z <- nCompiler::value(comp$m, "z")
   expect_equal(comp$obj5$run(), z[2:4, 2])
-  zAdd[,] <- 0
+  zAdd[, ] <- 0
   zAdd[2:4, 2] <- 1
   expect_equal(nCompiler::value(comp$m, "z"), z + zAdd)
 
   z <- nCompiler::value(comp$m, "z")
   expect_equal(comp$obj6$run(), z[3, 1:3])
-  zAdd[,] <- 0
+  zAdd[, ] <- 0
   zAdd[3, 1:3] <- 1
   expect_equal(nCompiler::value(comp$m, "z"), z + zAdd)
 
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })
 
-#library(nimble2)
+# library(nimble2)
 nimbleOptions(enableDerivs = FALSE)
 nCompiler::nOptions(pause_after_writing_files = FALSE)
 BROWSE_COMPILE_NIMBLE <- FALSE
@@ -147,15 +153,17 @@ test_that("model[[node]] works when node is non-scalar", {
     for (i in 1:5) {
       y[i] ~ dnorm(mu, var = tau)
     }
-    for(i in 1:5) {
-      for(j in 1:5) {
+    for (i in 1:5) {
+      for (j in 1:5) {
         z[i, j] ~ dnorm(mu, var = tau)
       }
     }
   })
 
-  inits <- list(tau = 25, mu = 0.1,
-                z = matrix(rnorm(25), nrow = 5))
+  inits <- list(
+    tau = 25, mu = 0.1,
+    z = matrix(rnorm(25), nrow = 5)
+  )
   data <- list(y = rnorm(5))
 
   mclass <- nimbleModel::nimbleModel(code, inits = inits, data = data, returnClass = TRUE)
@@ -183,7 +191,7 @@ test_that("model[[node]] works when node is non-scalar", {
         returnType(double(0))
       }
     ),
-    check=FALSE
+    check = FALSE
   )
   obj <- foo(m)
 
@@ -195,15 +203,16 @@ test_that("model[[node]] works when node is non-scalar", {
   expect_equal(nCompiler::value(comp$m, "y"), y + 1)
   y <- nCompiler::value(comp$m, "y")
 
-  expect_equal(comp$obj$foo2(), z[1,])
+  expect_equal(comp$obj$foo2(), z[1, ])
   zCheck <- z
-  zCheck[,1] <- zCheck[1,] + 1
+  zCheck[, 1] <- zCheck[1, ] + 1
   expect_equal(nCompiler::value(comp$m, "z"), zCheck)
 
   expect_equal(comp$obj$foo3(), mu)
   expect_equal(nCompiler::value(comp$m, "mu"), mu + 1)
 
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })
 
 # KNOWN ISSUE (run with RUN_FAILING_TESTS=1; see test_utils.R).
@@ -232,26 +241,40 @@ test_that("model[[node]] works when node is non-scalar", {
 #    which now goes through typed_cast (a string comparison); caching typed pointers in init()
 #    would make that cheaper.
 RUN_FAILING_TESTS <- FALSE
-if(RUN_FAILING_TESTS) {
-test_that("model[[node]] still reaches the model variable after its memory is replaced (known failure)", {
-  code <- quote({ mu ~ dnorm(0, 1); for(i in 1:3) y[i] ~ dnorm(mu, 1) })
-  m <- nimbleModel::nimbleModel(code, inits = list(mu = 0.5), data = list(y = 1:3), returnClass = TRUE)$new()
-  fooS <- nimbleFunction(
-    setup = function(m_, node) {},
-    run = function() { ans <- m_[[node]]; return(ans); returnType(double()) },
-    check = FALSE)
-  fooV <- nimbleFunction(
-    setup = function(m_, node) {},
-    run = function() { ans <- m_[[node]]; return(ans); returnType(double(1)) },
-    check = FALSE)
-  objS <- fooS(m, "y[2]")   # scalar node: pointer case
-  objV <- fooV(m, "y[2:3]") # non-scalar node: StridedTensorMap case
-  comp <- compileNimble(objS, objV, m)
-  expect_equal(comp$objS$run(), 2)
-  expect_equal(comp$objV$run(), c(2, 3))
-  nCompiler::value(comp$m, "y") <- c(1, 5, 7) # replaces y's memory
-  expect_equal(comp$objS$run(), 5)
-  expect_equal(comp$objV$run(), c(5, 7))
-  rm(comp); gc()
-})
+if (RUN_FAILING_TESTS) {
+  test_that("model[[node]] still reaches the model variable after its memory is replaced (known failure)", {
+    code <- quote({
+      mu ~ dnorm(0, 1)
+      for (i in 1:3) y[i] ~ dnorm(mu, 1)
+    })
+    m <- nimbleModel::nimbleModel(code, inits = list(mu = 0.5), data = list(y = 1:3), returnClass = TRUE)$new()
+    fooS <- nimbleFunction(
+      setup = function(m_, node) {},
+      run = function() {
+        ans <- m_[[node]]
+        return(ans)
+        returnType(double())
+      },
+      check = FALSE
+    )
+    fooV <- nimbleFunction(
+      setup = function(m_, node) {},
+      run = function() {
+        ans <- m_[[node]]
+        return(ans)
+        returnType(double(1))
+      },
+      check = FALSE
+    )
+    objS <- fooS(m, "y[2]") # scalar node: pointer case
+    objV <- fooV(m, "y[2:3]") # non-scalar node: StridedTensorMap case
+    comp <- compileNimble(objS, objV, m)
+    expect_equal(comp$objS$run(), 2)
+    expect_equal(comp$objV$run(), c(2, 3))
+    nCompiler::value(comp$m, "y") <- c(1, 5, 7) # replaces y's memory
+    expect_equal(comp$objS$run(), 5)
+    expect_equal(comp$objV$run(), c(5, 7))
+    rm(comp)
+    gc()
+  })
 }

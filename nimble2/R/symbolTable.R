@@ -16,7 +16,7 @@ symbolNimbleSpecial <-
       )
   )
 
-symbolVarRangeList <- 
+symbolVarRangeList <-
   R6::R6Class(
     classname = "symbolVarRangeList",
     inherit = symbolNimbleSpecial,
@@ -54,7 +54,7 @@ symbolMemberFunction <-
 
 # I think this is mostly used as a tag during processing
 # symbolNimbleSpecial means it does not propagate to C++
-symbolNimbleListGenerator <- 
+symbolNimbleListGenerator <-
   R6::R6Class(
     classname = "symbolNimbleListGenerator",
     inherit = symbolNimbleSpecial,
@@ -72,8 +72,8 @@ symbolNimbleListGenerator <-
         }
       )
   )
-  
-symbolNimbleList <- 
+
+symbolNimbleList <-
   R6::R6Class(
     classname = "symbolNimbleList",
     inherit = nCompiler:::symbolBase,
@@ -140,7 +140,7 @@ symbolNimbleFunction <-
       )
   )
 
-symbolNimbleFunctionList <- 
+symbolNimbleFunctionList <-
   R6::R6Class(
     classname = "symbolNimbleFunctionList",
     inherit = nCompiler:::symbolBase,
@@ -155,8 +155,9 @@ symbolNimbleFunctionList <-
         resolveSym = function(...) {
           base_NCgen <- self$base_nfProc$NCgenerator
           res <- nCompiler:::type2symbol(nCompiler::nList(base_NCgen()),
-                                         name = self$name,
-                                         isArg = self$isArg)
+            name = self$name,
+            isArg = self$isArg
+          )
           res <- res$resolveSym(...)
           return(res)
         },
@@ -167,7 +168,7 @@ symbolNimbleFunctionList <-
       )
   )
 
-symbolInstrList <- 
+symbolInstrList <-
   R6::R6Class(
     classname = "symbolInstrList",
     inherit = nCompiler:::symbolBase,
@@ -229,14 +230,14 @@ Dptr_Bracket_LAT <- function(code, symTab, auxEnv, handlingInfo) {
 Dptr_Bracket_EIG <- function(code, symTab, auxEnv, workEnv, handlingInfo) {
   nCompiler:::eigenizeEnv$eigenCast(code, 2, "integer")
   isAssign <- isTRUE(handlingInfo$isAssign)
-   # We will revert to `<-`(LHS, RHS)
-    if(isAssign) {
-      caller <- code$caller
-      callerArgID <- code$callerArgID
-      nCompiler:::eigenizeEnv$revert_OpAssign(code, symTab, auxEnv, workEnv, handlingInfo)
-      code <- caller$args[[callerArgID]] # now `<-`(LHS, RHS)
-      code <- code$args[[1]] # LHS, which is the original `[` call
-    }
+  # We will revert to `<-`(LHS, RHS)
+  if (isAssign) {
+    caller <- code$caller
+    callerArgID <- code$callerArgID
+    nCompiler:::eigenizeEnv$revert_OpAssign(code, symTab, auxEnv, workEnv, handlingInfo)
+    code <- caller$args[[callerArgID]] # now `<-`(LHS, RHS)
+    code <- code$args[[1]] # LHS, which is the original `[` call
+  }
   NULL
 }
 
@@ -247,7 +248,7 @@ symbolDptr <- R6::R6Class(
   inherit = nCompiler:::symbolBase,
   public = list(
     initialize = function(...) {
-      super$initialize(type = 'symbolDptr', ...)
+      super$initialize(type = "symbolDptr", ...)
       self$interface <- FALSE
       self$overloadDefs <- list(
         "[" = list(
@@ -279,10 +280,12 @@ symbolDptr <- R6::R6Class(
     uniqueID = function() "symbolDptr",
     print = function() writeLines(paste0(self$name, ": symbolDptr")),
     genCppVar = function() {
-      nCompiler:::cppVarFullClass$new(baseType = "double",
-                                      name = self$name,
-                                      ptr = TRUE,
-                                      ref = FALSE)
+      nCompiler:::cppVarFullClass$new(
+        baseType = "double",
+        name = self$name,
+        ptr = TRUE,
+        ref = FALSE
+      )
     }
   )
 )

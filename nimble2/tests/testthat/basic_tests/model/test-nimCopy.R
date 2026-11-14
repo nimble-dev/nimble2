@@ -15,15 +15,17 @@ test_that("basic nimCopy works", {
     for (i in 1:5) {
       y[i] ~ dnorm(mu, var = tau)
     }
-    for(i in 1:5) {
-      for(j in 1:5) {
+    for (i in 1:5) {
+      for (j in 1:5) {
         z[i, j] ~ dnorm(mu, var = tau)
       }
     }
   })
 
-  inits <- list(tau = 25, mu = 0,
-                z = matrix(rnorm(25), nrow = 5))
+  inits <- list(
+    tau = 25, mu = 0,
+    z = matrix(rnorm(25), nrow = 5)
+  )
   data <- list(y = rnorm(5))
 
   mclass <- nimbleModel::nimbleModel(code, inits = inits, data = data, returnClass = TRUE)
@@ -46,8 +48,10 @@ test_that("basic nimCopy works", {
     check = FALSE
   )
 
-  nodes <- list(nimbleModel::varRangeClass$new("mu"),
-                nimbleModel::varRangeClass$new("z[2:4, 1:3]"))
+  nodes <- list(
+    nimbleModel::varRangeClass$new("mu"),
+    nimbleModel::varRangeClass$new("z[2:4, 1:3]")
+  )
 
   nf1 <- nf(m, nodes)
 
@@ -64,10 +68,13 @@ test_that("basic nimCopy works", {
   z_expected <- matrix(0, nrow = 5, ncol = 5)
   z_expected[2:4, 1:3] <- matrix(1:25, nrow = 5)[2:4, 1:3]
   expect_equal(comp$nf1$mv["z", 1], z_expected)
-  expect_equal(nCompiler:::value(comp$nf1$mv, "z") |> as.list(),
-               list(z_expected, matrix(0, nrow = 5, ncol = 5)))
+  expect_equal(
+    nCompiler:::value(comp$nf1$mv, "z") |> as.list(),
+    list(z_expected, matrix(0, nrow = 5, ncol = 5))
+  )
   comp$nf1 <- comp$m <- NULL
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })
 
 test_that("nimCopy with nodesTo, logProb, logProbOnly and missing nodes matches uncompiled", {
@@ -80,8 +87,10 @@ test_that("nimCopy with nodesTo, logProb, logProbOnly and missing nodes matches 
     w <- mu + 1
   })
   make_model <- function() {
-    m <- nimbleModel::nimbleModel(code, data = list(y = matrix(1:12, 3)),
-                                  inits = list(mu = 0.2, x = 1:3), returnClass = TRUE)$new()
+    m <- nimbleModel::nimbleModel(code,
+      data = list(y = matrix(1:12, 3)),
+      inits = list(mu = 0.2, x = 1:3), returnClass = TRUE
+    )$new()
     m$calculate()
     m
   }
@@ -115,8 +124,10 @@ test_that("nimCopy with nodesTo, logProb, logProbOnly and missing nodes matches 
     model$x <- c(10, 20, 30)
     obj$mv["logProb_y", 3] <- matrix(0, 3, 4)
     obj$back()
-    c(ans, list(x_after = model$x, mu_after = model$mu, lpmu_after = model$logProb_mu,
-                lpy3_after = obj$mv["logProb_y", 3]))
+    c(ans, list(
+      x_after = model$x, mu_after = model$mu, lpmu_after = model$logProb_mu,
+      lpy3_after = obj$mv["logProb_y", 3]
+    ))
   }
   nodes <- c("mu", "x[2:3]")
   m <- make_model()
@@ -142,5 +153,6 @@ test_that("nimCopy with nodesTo, logProb, logProbOnly and missing nodes matches 
   c_ans <- run(comp$nf2, comp$m2)
   expect_equal(c_ans, r_ans)
   comp$nf2 <- comp$m2 <- NULL
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })

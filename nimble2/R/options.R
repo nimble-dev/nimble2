@@ -290,7 +290,9 @@ allNimbleOptions <- function() {
 #' @examples
 #' getNimbleOption("MCMCverifyConjugatePosteriors")
 getNimbleOption <- function(x) {
-  if (x %in% nimbleOptionsHeldByNimbleModel) return(nimbleModel::getNimbleModelOption(x))
+  if (x %in% nimbleOptionsHeldByNimbleModel) {
+    return(nimbleModel::getNimbleModelOption(x))
+  }
   option <- try(get(x, envir = .nimbleOptions), silent = TRUE)
   if (inherits(option, "try-error")) {
     return(NULL)

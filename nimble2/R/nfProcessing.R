@@ -2,11 +2,11 @@
 # It handles everything not involving instances.
 # A nimbleFunctionVirtual is a basic form of base class that,
 # in nimble, is effectively always an abstract base class in that
-# one can't make objects from it. 
+# one can't make objects from it.
 # In nimble2, we follow the use of nimbleFunction and virtualNimbleFunction
-# for purposes of creating nClass generators. Then we call nCompile for 
+# for purposes of creating nClass generators. Then we call nCompile for
 # those generators. The base/derived relationships are then re-processed
-# during nCompile. (We can potentially open up more fully-featured inheritance 
+# during nCompile. (We can potentially open up more fully-featured inheritance
 # in nimble2 than in nimble, but at the time of this writing, the goal
 # is backward compatibility.)
 virtualNFprocessing <- setRefClass("virtualNFprocessing",
@@ -35,99 +35,100 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
       writeLines(paste0("virtualNFprocessing object ", name))
     },
     initialize = function(f = NULL, className, virtual = TRUE, project = NULL) {
-    # {force(f)} # avoid warnings from recursive promise evaluation during debugging
-    nimbleProject <<- project
-    #   compileInfos <<- list()
-    matchedCodes <<- list()
-    processedCodes <<- list()
-    cpp_init_ <<- NULL
-    process_done <<- FALSE
-    #   RCfunProcs <<- list()
-
-    # isNode <<- isNode
-
-    if (!is.null(f)) { ## This allows successful default instantiation by R when defining nfProcessing below -- crazy.
-      ## nfGenerator is allowed if it is a nimbleFunctionVirtual.
-      if (is.nf(f) | is.nfGenerator(f)) {
-        nfGenerator <<- nf_getGeneratorFunction(f)
-      } else if (inherits(f, "list")) {
-        if (length(unique(lapply(f, nfGetDefVar, "name"))) != 1) {
-          stop("Error with list of instances not having same nfGenerator")
-        }
-        nfGenerator <<- nf_getGeneratorFunction(f[[1]])
-      }
-      NCenv <<- new.env(parent = environment(nfGenerator)) # This is the env for the NCgenerator, so that RCfunctions (here nFunctions) and nimbleListDefs can be found by natural scoping.
-
-      if (missing(className)) {
-        sf <- environment(nfGenerator)$name
-        name <<- nCompiler::Rname2CppName(sf)
-      } else {
-        name <<- className
-      }
-      nClass_classname <<- paste0(nfGetDefVar(.self$nfGenerator, "name"), "_nClass")
-      # We must build new copies of the methods here for purposes of type declaration
-      # scoping (for environments captured in quosures). See note in nimbleFunction.
-      updatedOrigMethodList <- getFunctionEnvVar(nfGenerator, "updatedOrigMethodList")
-      buildDerivsList <- getFunctionEnvVar(nfGenerator, "buildDerivsList")
-      # The compileInfo$virtual and/or $abstract settings may have been changed
-      # so we need to carry over the compileInfo to get them.
-      genMethodList <- getFunctionEnvVar(nfGenerator, "methodList")
-      origMethods <<- list()
-      for(iM in seq_along(updatedOrigMethodList)) {
-        origMethods[[iM]] <<- RCfunction(updatedOrigMethodList[[iM]],
-          # name ?
-          buildDerivs = buildDerivsList[[iM]],
-          where = NCenv
-        )
-        # Carry over compileInfo (e.g. virtual/abstract settings from nimbleFunctionVirtual)
-        nCompiler::NFinternals(origMethods[[iM]])$compileInfo <<-
-          nCompiler::NFinternals(genMethodList[[iM]])$compileInfo
-      }
-      names(origMethods) <<- names(updatedOrigMethodList)
-      #origMethods <<- nf_getMethodList(nfGenerator)
-      origMethodNames <- names(origMethods)
-      origSetupOutputNames <<- nf_getSetupOutputNames(nfGenerator)
-      updatedSetupOutputNames <<- origSetupOutputNames
-      declaredSetupOutputNames <<- getFunctionEnvVar(nfGenerator, "declaredSetupOutputNames")
-      # To-do: Manage a full and complete set of operator names, keywords, etc.
-      conflictedNames <- origMethodNames %in% names(nCompiler:::operatorDefEnv)
-      # conflictedNames <- origMethodNames %in% c(
-      #   names(nimble:::cppOutputCalls), names(nimble:::specificCallReplacements),
-      #   binaryOperators, unaryOperators,
-      #   reductionUnaryOperators, matrixSquareReductionOperators,
-      #   reductionBinaryOperators, nonNativeEigenCalls,
-      #   matrixFlipOperators, matrixSquareOperators,
-      #   nimbleListReturningOperators, matrixSolveOperators
-      # )
-      if (any(conflictedNames)) {
-        stop(
-          "The name of the nimbleFunction method `",
-          paste0(origMethodNames[conflictedNames], collapse = "`,"),
-          "` conflicts with a function in the NIMBLE language (DSL); please use a different name"
-        )
-      }
-      # nimble2: stopping here, turning off the following:
-      # use_RCfunProcs <- FALSE
-      # if (use_RCfunProcs) {
+      # {force(f)} # avoid warnings from recursive promise evaluation during debugging
+      nimbleProject <<- project
+      #   compileInfos <<- list()
+      matchedCodes <<- list()
+      processedCodes <<- list()
+      cpp_init_ <<- NULL
+      process_done <<- FALSE
       #   RCfunProcs <<- list()
-      #   for (i in seq_along(origMethods)) {
-      #     RCname <- names(origMethods)[i]
-      #     # if(isNode && strsplit(RCname, '_', fixed = TRUE)[[1]][1] == getCalcADFunName()) constFlag <- FALSE
-      #     # else
-      #     constFlag <- isNode
-      #     RCfunProcs[[RCname]] <<-
-      #       if (virtual) {
-      #         RCvirtualFunProcessing$new(origMethods[[i]], RCname, const = constFlag)
-      #       } else {
-      #         RCfunProcessing$new(origMethods[[i]], RCname, const = constFlag)
-      #       }
-      #   }
-      #   compileInfos <<- lapply(
-      #     RCfunProcs,
-      #     function(x) x$compileInfo
-      #   )
-      # }
-    }},
+
+      # isNode <<- isNode
+
+      if (!is.null(f)) { ## This allows successful default instantiation by R when defining nfProcessing below -- crazy.
+        ## nfGenerator is allowed if it is a nimbleFunctionVirtual.
+        if (is.nf(f) | is.nfGenerator(f)) {
+          nfGenerator <<- nf_getGeneratorFunction(f)
+        } else if (inherits(f, "list")) {
+          if (length(unique(lapply(f, nfGetDefVar, "name"))) != 1) {
+            stop("Error with list of instances not having same nfGenerator")
+          }
+          nfGenerator <<- nf_getGeneratorFunction(f[[1]])
+        }
+        NCenv <<- new.env(parent = environment(nfGenerator)) # This is the env for the NCgenerator, so that RCfunctions (here nFunctions) and nimbleListDefs can be found by natural scoping.
+
+        if (missing(className)) {
+          sf <- environment(nfGenerator)$name
+          name <<- nCompiler::Rname2CppName(sf)
+        } else {
+          name <<- className
+        }
+        nClass_classname <<- paste0(nfGetDefVar(.self$nfGenerator, "name"), "_nClass")
+        # We must build new copies of the methods here for purposes of type declaration
+        # scoping (for environments captured in quosures). See note in nimbleFunction.
+        updatedOrigMethodList <- getFunctionEnvVar(nfGenerator, "updatedOrigMethodList")
+        buildDerivsList <- getFunctionEnvVar(nfGenerator, "buildDerivsList")
+        # The compileInfo$virtual and/or $abstract settings may have been changed
+        # so we need to carry over the compileInfo to get them.
+        genMethodList <- getFunctionEnvVar(nfGenerator, "methodList")
+        origMethods <<- list()
+        for (iM in seq_along(updatedOrigMethodList)) {
+          origMethods[[iM]] <<- RCfunction(updatedOrigMethodList[[iM]],
+            # name ?
+            buildDerivs = buildDerivsList[[iM]],
+            where = NCenv
+          )
+          # Carry over compileInfo (e.g. virtual/abstract settings from nimbleFunctionVirtual)
+          nCompiler::NFinternals(origMethods[[iM]])$compileInfo <<-
+            nCompiler::NFinternals(genMethodList[[iM]])$compileInfo
+        }
+        names(origMethods) <<- names(updatedOrigMethodList)
+        # origMethods <<- nf_getMethodList(nfGenerator)
+        origMethodNames <- names(origMethods)
+        origSetupOutputNames <<- nf_getSetupOutputNames(nfGenerator)
+        updatedSetupOutputNames <<- origSetupOutputNames
+        declaredSetupOutputNames <<- getFunctionEnvVar(nfGenerator, "declaredSetupOutputNames")
+        # To-do: Manage a full and complete set of operator names, keywords, etc.
+        conflictedNames <- origMethodNames %in% names(nCompiler:::operatorDefEnv)
+        # conflictedNames <- origMethodNames %in% c(
+        #   names(nimble:::cppOutputCalls), names(nimble:::specificCallReplacements),
+        #   binaryOperators, unaryOperators,
+        #   reductionUnaryOperators, matrixSquareReductionOperators,
+        #   reductionBinaryOperators, nonNativeEigenCalls,
+        #   matrixFlipOperators, matrixSquareOperators,
+        #   nimbleListReturningOperators, matrixSolveOperators
+        # )
+        if (any(conflictedNames)) {
+          stop(
+            "The name of the nimbleFunction method `",
+            paste0(origMethodNames[conflictedNames], collapse = "`,"),
+            "` conflicts with a function in the NIMBLE language (DSL); please use a different name"
+          )
+        }
+        # nimble2: stopping here, turning off the following:
+        # use_RCfunProcs <- FALSE
+        # if (use_RCfunProcs) {
+        #   RCfunProcs <<- list()
+        #   for (i in seq_along(origMethods)) {
+        #     RCname <- names(origMethods)[i]
+        #     # if(isNode && strsplit(RCname, '_', fixed = TRUE)[[1]][1] == getCalcADFunName()) constFlag <- FALSE
+        #     # else
+        #     constFlag <- isNode
+        #     RCfunProcs[[RCname]] <<-
+        #       if (virtual) {
+        #         RCvirtualFunProcessing$new(origMethods[[i]], RCname, const = constFlag)
+        #       } else {
+        #         RCfunProcessing$new(origMethods[[i]], RCname, const = constFlag)
+        #       }
+        #   }
+        #   compileInfos <<- lapply(
+        #     RCfunProcs,
+        #     function(x) x$compileInfo
+        #   )
+        # }
+      }
+    },
     # setupLocalSymbolTables = function() {
     #   for (i in seq_along(RCfunProcs)) {
     #     RCfunProcs[[i]]$setupSymbolTables(parentST = setupSymTab, neededTypes = list(), nimbleProject = nimbleProject)
@@ -146,20 +147,22 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
       }
     },
     process = function(control = list(debug = FALSE, debugCpp = FALSE)) {
-      if(process_done) return(invisible(NULL))
+      if (process_done) {
+        return(invisible(NULL))
+      }
       # setupSymTab <<- symbolTable(parentST = NULL)
       setupSymTab <<- nCompiler:::symbolTableClass$new()
       addMemberFunctionsToSymbolTable()
 
       # In the non-virtual case below, we do:
       # matchKeywords_all()
-      # processKeywords_all()      
+      # processKeywords_all()
       # Here we short-circuit those and just populate
       # processedCodes, so that it can be used in build_NCgenerator.
       # This mimics nimble. In the future, we could do matching
       # and some keyword processing (when not involved setup outputs and thus instances).
       # That is a TBD extension beyond original nimble.
-      for(i in seq_along(origMethods)) {
+      for (i in seq_along(origMethods)) {
         processedCodes[[i]] <<- nCompiler::NFinternals(origMethods[[i]])$code
       }
       process_done <<- TRUE
@@ -167,7 +170,9 @@ virtualNFprocessing <- setRefClass("virtualNFprocessing",
       # setupLocalSymbolTables()
       # doRCfunProcess(control)
     },
-    build_NCgenerator = function() {NCgenerator <<- build_NCgenerator_impl(.self)},
+    build_NCgenerator = function() {
+      NCgenerator <<- build_NCgenerator_impl(.self)
+    },
     setupTypesForUsingFunction = function() {} # Do-nothing so this can be called generically.
   )
 )
@@ -199,7 +204,7 @@ nfProcessing <- setRefClass("nfProcessing",
       neededObjectNames <<- character()
       newSetupCode <<- list()
       if (!is.null(f)) {
-      ## f must be a specialized nf, or a list of them
+        ## f must be a specialized nf, or a list of them
         if (missing(className)) {
           sf <- if (is.list(f)) nfGetDefVar(f[[1]], "name") else nfGetDefVar(f, "name")
           name <<- nCompiler::Rname2CppName(sf)
@@ -298,12 +303,14 @@ nfProcessing <- setRefClass("nfProcessing",
       if (!is.null(contains)) {
         className <- environment(contains)$className
         nfp <- nimbleProject$nimbleFunction_add(generator = contains, fromModel = inModel) # fromModel might be defunct
-#        newSym <- symbolNimbleFunction(name = name, type = "nimbleFunctionVirtual", nfProc = nfp)
-#        if (!(className %in% names(neededTypes))) neededTypes[[className]] <<- newSym
+        #        newSym <- symbolNimbleFunction(name = name, type = "nimbleFunctionVirtual", nfProc = nfp)
+        #        if (!(className %in% names(neededTypes))) neededTypes[[className]] <<- newSym
       }
     },
     process = function(control = list(debug = FALSE, debugCpp = FALSE)) {
-      if(process_done) return(invisible(NULL))
+      if (process_done) {
+        return(invisible(NULL))
+      }
       setupTypesForUsingFunction()
       makeNewSetupLinesOneExpr()
       evalNewSetupLines()
@@ -336,7 +343,7 @@ build_NCgenerator_impl <- function(.self) {
   # all needed types -- specifically an base class -- will have been registered.
   # Note that R6 and nClass hold "inherits" arguments by expression, but
   # nimble holds its "contains" argument by value (the actual base class nimbleFunctionVirtual generator)
-  if(missing(.self)) stop(".self is missing in a call to build_NCgenerator_impl")
+  if (missing(.self)) stop(".self is missing in a call to build_NCgenerator_impl")
   new_methods <- list()
   isVirtual <- nfGetDefVar(.self$nfGenerator, "virtual")
   anyAbstract <- FALSE
@@ -347,7 +354,7 @@ build_NCgenerator_impl <- function(.self) {
     new_methods[[thisName]] <- origMethods[[i]]
     nCompiler::NFinternals(new_methods[[thisName]]) <- nCompiler::NFinternals(origMethods[[i]])$clone()
     nCompiler::NFinternals(new_methods[[thisName]])$updateCode(processedCodes[[i]])
-    if(isVirtual) {
+    if (isVirtual) {
       anyAbstract <- anyAbstract || isTRUE(nCompiler::NFinternals(new_methods[[thisName]])$compileInfo$abstract)
     }
   }
@@ -358,23 +365,23 @@ build_NCgenerator_impl <- function(.self) {
       members[[mn]] <- NULL
       next
     }
-    if(!is.null(sym$declaration)) {
+    if (!is.null(sym$declaration)) {
       members[[mn]] <- sym$declaration
       next
     }
-    if(is.character(sym$type) && length(sym$type) > 0 && sym$type[1] == "Ronly") {
+    if (is.character(sym$type) && length(sym$type) > 0 && sym$type[1] == "Ronly") {
       members[[mn]] <- NULL
       next
     }
   }
   compileInfo <- list()
-  if(anyAbstract) {
+  if (anyAbstract) {
     compileInfo <- list(createFromR = FALSE)
   }
   classname <- .self$nClass_classname
   initL <- list()
-  initL$cpp_init_ = .self$cpp_init_ # May be NULL, resulting in no cpp_init_ element.
-  if(!is.null(nfGetDefVar(.self$nfGenerator, "contains"))) {
+  initL$cpp_init_ <- .self$cpp_init_ # May be NULL, resulting in no cpp_init_ element.
+  if (!is.null(nfGetDefVar(.self$nfGenerator, "contains"))) {
     contains <- nfGetDefVar(.self$nfGenerator, "contains")
     contains_generatorName <- environment(contains)$name
     contains_nfProc <- .self$nimbleProject$nimbleFunction_setup_proc(generatorName = contains_generatorName)
@@ -384,7 +391,7 @@ build_NCgenerator_impl <- function(.self) {
   } else {
     NFcontains <- NULL
   }
-  fields <- if(isVirtual) list() else .self$newFields
+  fields <- if (isVirtual) list() else .self$newFields
   NCgenerator <- eval(substitute(
     nCompiler::nClass(
       classname = CLASSNAME,
@@ -437,7 +444,7 @@ nfProcessing$methods(evalNewSetupLinesOneInstance = function(i, check = FALSE) {
       return(invisible(NULL))
     }
   }
-  if(!newSetupLinesProcessed) {
+  if (!newSetupLinesProcessed) {
     instance <- instances[[i]]
     if (is.nf(instance)) instance <- nf_getRefClassObject(instance)
     instances_newSetupEnvs[[i]] <<- new.env(parent = instances[[i]])
@@ -445,7 +452,7 @@ nfProcessing$methods(evalNewSetupLinesOneInstance = function(i, check = FALSE) {
   ## Warning: this relies on the fact that although refClass environments are closed, we can
   ## eval in them and create new variables in them that way.
   eval(newSetupCodeOneExpr, envir = instances_newSetupEnvs[[i]])
-  #instance$.newSetupLinesProcessed <- TRUE
+  # instance$.newSetupLinesProcessed <- TRUE
 })
 
 nfProcessing$methods(setupTypesForUsingFunction = function() {
@@ -475,7 +482,7 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
     #   name = ".self",
     #   nfProc = .self
     # ))
-    outputNames <- c(outputNames, origSetupOutputNames) #nf_getSetupOutputNames(nfGenerator))
+    outputNames <- c(outputNames, origSetupOutputNames) # nf_getSetupOutputNames(nfGenerator))
     if (length(outputNames) > 0) outputNames <- unique(outputNames)
   }
   if (setupNew) {
@@ -495,7 +502,7 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
     ## that are really created as intermediates for others that are really needed
     ## during the keyword processing, the newSetupOutputNames is used for
     ## bookkeeping, so it would not be trivial to remove them at an earlier stage.
-    origSetupOutputs <- origSetupOutputNames #nf_getSetupOutputNames(nfGenerator)
+    origSetupOutputs <- origSetupOutputNames # nf_getSetupOutputNames(nfGenerator)
     declaredSetupOutputs <- declaredSetupOutputNames # getFunctionEnvVar(nfGenerator, "declaredSetupOutputNames")
     origSetupOutputs <- setdiff(origSetupOutputs, declaredSetupOutputs)
     newRcodeList <- c(processedCodes, list(nCompiler::NFinternals(cpp_init_)$code))
@@ -508,8 +515,9 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
     newSetupOutputNamesInOrig <- intersect(newSetupOutputNames, origSetupOutputs)
 
     origSetupOutputNamesToKeep <- intersect(
-                              c(allNamesInCodeAfterKeywordProcessing, newSetupOutputNamesInOrig),
-                              origSetupOutputs) ## this loses mv!
+      c(allNamesInCodeAfterKeywordProcessing, newSetupOutputNamesInOrig),
+      origSetupOutputs
+    ) ## this loses mv!
 
 
     origSetupOutputNamesNotNeeded <- setdiff(origSetupOutputs, origSetupOutputNamesToKeep)
@@ -525,7 +533,7 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
 
     # newSetupOutputNames will have been populated during keyword processing.
     # This also provides a way to force retaining a name that would otherwise be discarded,
-    #.  for example if it appears in an nCpp (cppLiteral) call and thus is not picked up by the all.names() above.
+    # .  for example if it appears in an nCpp (cppLiteral) call and thus is not picked up by the all.names() above.
     newSetupOutputNamesToProcess <- setdiff(newSetupOutputNames, newSetupOutputNamesInOrig)
     updatedNewSetupOutputNames <<- newSetupOutputNamesToProcess
     outputNames <- c(outputNames, newSetupOutputNamesToProcess)
@@ -547,7 +555,7 @@ nfProcessing$methods(doSetupTypeInference = function(setupOrig, setupNew) {
 })
 
 nfProcessing$methods(doSetupTypeInference_processNF = function(symTab,
-      setupOutputNames, add = FALSE, firstOnly = isTRUE(getNimbleOption("deduceTypeFromFirstInstanceOnly"))) {
+                                                               setupOutputNames, add = FALSE, firstOnly = isTRUE(getNimbleOption("deduceTypeFromFirstInstanceOnly"))) {
   if (length(instances) == 0) {
     warning("Can not infer setup output types with no instances.")
     return(invisible(NULL))
@@ -657,7 +665,7 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
     nfp <- .self$nimbleProject$nimbleFunction_add_multi(funList) ## will return existing nfProc if it exists
     # className <- class(nf_getRefClassObject(funList[[1]]))
     # .self$neededObjectNames <- c(.self$neededObjectNames, name)
-    if(length(nfp) != 1 || is.null(nfp)) {
+    if (length(nfp) != 1 || is.null(nfp)) {
       stop(paste0("Problem handling ", name, ". There were ", length(nfp), " nimbleFunction types across instances (must be 1)."))
     }
     newSym <- symbolNimbleFunction$new(name = name, nfProc = nfp[[1]]$nfProc)
@@ -676,7 +684,7 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
       name = name,
       type = "modelValuesBase_nClass",
       isArg = FALSE
-    )) 
+    ))
   }
   if (inherits(first_inst, "modelBase_nClass")) {
     if (!firstOnly) {
@@ -692,14 +700,14 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
       isArg = FALSE
     )) # previously used a className, but may not be needed
   }
-  if(is.list(first_inst) &&
-     length(first_inst) > 0 &&
-      inherits(first_inst[[1]], "varRangeClass")) {
-        return(symbolVarRangeList$new(name = name))
+  if (is.list(first_inst) &&
+    length(first_inst) > 0 &&
+    inherits(first_inst[[1]], "varRangeClass")) {
+    return(symbolVarRangeList$new(name = name))
   }
   # makeInstrList returns an RinstrList (a plain R list mimicking instrList_nClass),
   # which the C++ instrList_nClass fills when the setup outputs are populated.
-  if(inherits(first_inst, c("RinstrList", "instrList_nClass"))) {
+  if (inherits(first_inst, c("RinstrList", "instrList_nClass"))) {
     return(symbolInstrList$new(name = name))
   }
   # if (inherits(instances[[1]][[name]], "ADproxyModelClass")) {
@@ -811,18 +819,23 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
       return(nCompiler:::symbolBasicString$new(name = name, nDim = nDim))
     }
   }
-  if(nCompiler:::isNC(first_inst)) {
-    if(is.null(attr(first_inst, "NCgenerator")))
+  if (nCompiler:::isNC(first_inst)) {
+    if (is.null(attr(first_inst, "NCgenerator"))) {
       stop("nClass objects created in setup code or by partial evaluation (keyword processing) must have an 'NCgenerator' attribute set.")
+    }
     NCgen <- attr(first_inst, "NCgenerator")
-    if(!nCompiler:::isNCgenerator(NCgen))
+    if (!nCompiler:::isNCgenerator(NCgen)) {
       NCgen <- eval(NCgen, envir = instances_to_use[[1]])
-    if(!nCompiler:::isNCgenerator(NCgen))
+    }
+    if (!nCompiler:::isNCgenerator(NCgen)) {
       stop("nClass objects created in setup code or by partial evaluation (keyword processing) must have an 'NCgenerator' attribute set to an nClass generator object or code that evaluates to one.")
-    return(nCompiler:::symbolNC$new(name = name,
-        type = nCompiler:::NCinternals(NCgen)$cpp_classname,
-        isArg = FALSE,
-        NCgenerator = NCgen))
+    }
+    return(nCompiler:::symbolNC$new(
+      name = name,
+      type = nCompiler:::NCinternals(NCgen)$cpp_classname,
+      isArg = FALSE,
+      NCgenerator = NCgen
+    ))
   }
   if (is.numeric(first_inst) || is.logical(first_inst)) {
     if (firstOnly) {
@@ -833,43 +846,43 @@ makeTypeObj_impl <- function(.self, name, firstOnly) {
       if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) {
         if (nDim == 1 & identical(as.integer(size), 1L)) nDim <- 0
       }
-      if(!is.null(declared_type)) {
+      if (!is.null(declared_type)) {
         type <- declared_type$type %||% type
         nDim <- declared_type$nDim %||% nDim
-       # size <- declared_type$size %||% size
+        # size <- declared_type$size %||% size
       }
       return(nCompiler:::symbolBasic$new(name = name, type = type, nDim = nDim, size = size))
     } else {
       instanceObjs <- lapply(instances_to_use, `[[`, name)
       types <- unlist(lapply(instanceObjs, storage.mode))
       dims <- lapply(instanceObjs, \(x) if (is.null(dim(x))) length(x) else dim(x))
-#      dimsNULL <- unlist(lapply(dims, is.null))
+      #      dimsNULL <- unlist(lapply(dims, is.null))
       declared_types <- lapply(instanceObjs, function(x) attr(x, "nimble_type"))
       bool_declared_types <- unlist(lapply(declared_types, function(x) !is.null(x)))
       if (any(bool_declared_types)) {
         use_declaredTypes <- TRUE
         declared_typeList <- lapply(declared_types, function(x) x$type)
         declared_nDimList <- lapply(declared_types, function(x) x$nDim)
-       # declared_sizeList <- lapply(declared_types, function(x) x$size)
+        # declared_sizeList <- lapply(declared_types, function(x) x$size)
       } else {
         use_declaredTypes <- FALSE
       }
 
-      default_singleton_nDim <- if(getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) 0 else 1
+      default_singleton_nDim <- if (getNimbleOption("convertSingleVectorsToScalarsInSetupArgs")) 0 else 1
       nDims <- lapply(dims, function(x) if (length(x) == 1 && x[1] == 1) default_singleton_nDim else length(x))
-      if(use_declaredTypes) {
+      if (use_declaredTypes) {
         bool_declared_nDimList <- lapply(declared_nDimList, \(x) !is.null(x)) |> unlist()
         nDims[bool_declared_nDimList] <- declared_nDimList[bool_declared_nDimList]
       }
-      if(length(unique(nDims)) > 1) {
+      if (length(unique(nDims)) > 1) {
         warning(paste0("Problem, dimensions do no all match for ", name))
         return(NA)
       }
       nDim <- nDims[[1]]
       size <- rep(as.numeric(NA), nDim) # not really used in nimble2 and may be removed
-      if(nDim == 0) size <- 1L
+      if (nDim == 0) size <- 1L
 
-      if(use_declaredTypes) {
+      if (use_declaredTypes) {
         bool_declared_typeList <- lapply(declared_typeList, \(x) !is.null(x)) |> unlist()
         types[bool_declared_typeList] <- declared_typeList[bool_declared_typeList]
       }

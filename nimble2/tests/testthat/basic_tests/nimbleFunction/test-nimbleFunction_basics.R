@@ -38,7 +38,7 @@ test_that("nimbleFunction containing another nimbleFunction compiles and works",
   nf_inner <- nimbleFunction(
     setup = TRUE,
     run = function(y = double(1)) {
-      return(2*y)
+      return(2 * y)
       returnType(double(1))
     },
     check = FALSE
@@ -63,10 +63,11 @@ test_that("nimbleFunction containing another nimbleFunction compiles and works",
 
   cnf <- compileNimble(nf1)
 
-  expect_equal(cnf$run(2:4), 2*(1:3 + 2:4))
+  expect_equal(cnf$run(2:4), 2 * (1:3 + 2:4))
   expect_equal(cnf$x, 1:3)
   cnf$x <- 11:13
-  expect_equal(cnf$run(2:4), 2*(11:13 + 2:4))
+  expect_equal(cnf$run(2:4), 2 * (11:13 + 2:4))
 
-  rm(cnf); gc()
+  rm(cnf)
+  gc()
 })

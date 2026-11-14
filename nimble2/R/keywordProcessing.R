@@ -28,11 +28,11 @@ keywordInfoClass <- setRefClass("keywordInfoClass",
 #
 # Now there are two new needs:
 # 1. An unique key itself. While this might often be the name of a new setup output,
-#.   it need not be and need not represent a setup output. This is useful because
-#.   a particular setupCodeTemplate may create new setup code, and/or new init code,
+# .   it need not be and need not represent a setup output. This is useful because
+# .   a particular setupCodeTemplate may create new setup code, and/or new init code,
 #    and (especially in the latter case) may not even create a new object.
 # 2. The names need to be available across these steps. For example, new init code
-#.   might need to know the name of a new setup output.
+# .   might need to know the name of a new setup output.
 #
 # Hence here we will make setupCodeTemplates work differently. Previously they were
 # reference classes, with fields that held functions (unique to each one), but that meant
@@ -44,39 +44,47 @@ keywordInfoClass <- setRefClass("keywordInfoClass",
 #
 # Supported elements in a setupCodeTemplate:
 # - makeID(argList, ...): make a unique ID. Defaults to the first name returned from makeSetupNames,
-#.  or name of first field returned from makeFields, or an error if both are empty.
+# .  or name of first field returned from makeFields, or an error if both are empty.
 # - makeSetupNames(argList, ...): make names for new setup outputs. Defaults to character(0)
-#.  (One of makeID or makeSetupNames must be provided.)
+# .  (One of makeID or makeSetupNames must be provided.)
 # - makeFields(argList, ...): make named list of new fields for an nClass. These will be
-#.  fields needed in new init code. Defaults to list()
+# .  fields needed in new init code. Defaults to list()
 # - makeSetupCodeSubList(newSetupNames, argList, ...): make a named list of substitutions for the setup code template. Defaults to list()
 # - setupCodeTemplate: a code object for substitution from makeSetupCodeSubList. Not used if NULL.
 # - makeInitCodeSubList(newFields, newSetupNames, argList, ...): make a named list of substitutions for the init code template. Defaults to list()
 # - initCodeTemplate: a code object for substitution from makeInitCodeSubList. Not used if NULL.
 setupCodeTemplate <- function(...) {
   args <- list(...)
-  if(is.null(args$makeSetupNames))
+  if (is.null(args$makeSetupNames)) {
     args$makeSetupNames <- \(argList, ...) character()
-  if(is.null(args$makeID))
+  }
+  if (is.null(args$makeID)) {
     args$makeID <- \(argList, ...) {
       ans <- makeSetupNames(argList, ...)
-      if(length(ans) == 0)
+      if (length(ans) == 0) {
         ans <- makeFields(argList, ...) |> names()
-      if(length(ans) == 0)
+      }
+      if (length(ans) == 0) {
         stop("setupCodeTemplate must have at least one of makeID, makeSetupNames, or the names from makeFields be non-empty.")
+      }
       ans[1]
     }
-  if(is.null(args$makeFields))
+  }
+  if (is.null(args$makeFields)) {
     args$makeFields <- \(argList, ...) list()
-  if(is.null(args$makeSetupCodeSubList))
+  }
+  if (is.null(args$makeSetupCodeSubList)) {
     args$makeSetupCodeSubList <- \(newSetupNames, argList, ...) list()
-  if(is.null(args$makeInitCodeSubList))
+  }
+  if (is.null(args$makeInitCodeSubList)) {
     args$makeInitCodeSubList <- \(newFields, newSetupNames, argList, ...) list()
+  }
   env <- new.env(parent = parent.frame())
   for (nm in names(args)) {
     env[[nm]] <- args[[nm]]
-    if(is.function(env[[nm]]))
+    if (is.function(env[[nm]])) {
       environment(env[[nm]]) <- env
+    }
   }
   return(env)
 }
@@ -173,8 +181,10 @@ getParam_keywordInfo <- keywordInfoClass(
       return(code)
     }
     errorContext <- deparse(code)
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$node, param = code$param,
-                               includeData = TRUE, sortUnique = TRUE, errorContext = errorContext)
+    nodeFunVec_ArgList <- list(
+      model = code$model, nodes = code$node, param = code$param,
+      includeData = TRUE, sortUnique = TRUE, errorContext = errorContext
+    )
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
       if (!isCodeArgBlank(code, "nodes")) {
         stop("nodes argument cannot be provided to getParam if nodeFunctionIndex is specified")
@@ -201,7 +211,7 @@ getParam_keywordInfo <- keywordInfoClass(
     ## This is main case (regular mode), including without derivs at all
     #  and with buildDerivs but not nimDerivs(model$calculate...)
     nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
-    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    # nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
     addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
     paramFields <- paramID_SetupTemplate$makeFields(nodeFunVec_ArgList)
@@ -225,11 +235,12 @@ getParam_keywordInfo <- keywordInfoClass(
     # all nodes must have the same paramID for `param`.
     newRunCode <- substitute(
       nAs(model_getParam_indexed(MODEL, NODEFUNVEC_NAME, STEP, PARAMID), targetType),
-      list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
-          STEP = if (useNodeFunctionVectorByIndex) nodesIndexExpr else 1L,
-          PARAMID = as.name(paramIDname),
-          targetType = targetType
-          )
+      list(
+        MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
+        STEP = if (useNodeFunctionVectorByIndex) nodesIndexExpr else 1L,
+        PARAMID = as.name(paramIDname),
+        targetType = targetType
+      )
     )
 
     # nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
@@ -275,8 +286,10 @@ getBound_keywordInfo <- keywordInfoClass(
       return(code)
     }
     errorContext <- deparse(code)
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$node, bound = code$bound,
-        includeData = TRUE, sortUnique = TRUE, errorContext = errorContext)
+    nodeFunVec_ArgList <- list(
+      model = code$model, nodes = code$node, bound = code$bound,
+      includeData = TRUE, sortUnique = TRUE, errorContext = errorContext
+    )
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
       if (!isCodeArgBlank(code, "nodes")) {
         stop("nodes argument cannot be provided to getBound if nodeFunctionIndex is specified")
@@ -294,8 +307,9 @@ getBound_keywordInfo <- keywordInfoClass(
     useNodeFunctionVectorByIndex <- FALSE
     if (hasBracket(nodeFunVec_ArgList$nodes)) { ## like getBound(model, nodes[i]), which could have started as model$calculate(nodes[i])
       useNodeFunctionVectorByIndex <- TRUE
-      if (length(nodeFunVec_ArgList$nodes) != 3) 
+      if (length(nodeFunVec_ArgList$nodes) != 3) {
         stop(paste0("Problem with ", deparse(code), ". If you need to index on the nodes argument there should be only one index."))
+      }
       nodesIndexExpr <- nodeFunVec_ArgList$nodes[[3]]
       nodeFunVec_ArgList$nodes <- nodeFunVec_ArgList$nodes[[2]]
       nodeFunVec_ArgList$sortUnique <- FALSE
@@ -304,18 +318,20 @@ getBound_keywordInfo <- keywordInfoClass(
     ## This is main case (regular mode), including without derivs at all
     #  and with buildDerivs but not nimDerivs(model$calculate...)
     nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
-    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    # nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
     addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
     boundIDname <- boundID_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
     addNecessarySetupAndInitCode(boundID_SetupTemplate, nodeFunVec_ArgList, nfProc)
-    
+
     # getBound(model, nodes) uses the first node, which is step 1 of the instrList.
     newRunCode <- substitute(
       model_getBound_indexed(MODEL, NODEFUNVEC_NAME, STEP, BOUNDID),
-      list(MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
-          STEP = if (useNodeFunctionVectorByIndex) nodesIndexExpr else 1L,
-          BOUNDID = as.name(boundIDname))
+      list(
+        MODEL = code$model, NODEFUNVEC_NAME = as.name(nodeFunName),
+        STEP = if (useNodeFunctionVectorByIndex) nodesIndexExpr else 1L,
+        BOUNDID = as.name(boundIDname)
+      )
     )
 
     # nodeFunName <- nodeFunctionVector_SetupTemplate$makeName(nodeFunVec_ArgList)
@@ -419,7 +435,7 @@ calculate_keywordInfo <- keywordInfoClass(
       ## This is main case (regular mode), including without derivs at all
       #  and with buildDerivs but not nimDerivs(model$calculate...)
       nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
-      #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+      # nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
       addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
     } else {
       # To-do: some derivs cases:
@@ -451,9 +467,11 @@ calculateDiff_keywordInfo <- keywordInfoClass(
       return(code)
     }
     errorContext <- deparse(code)
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$nodes,
-                              includeData = TRUE, sortUnique = TRUE,
-                              errorContext = errorContext)
+    nodeFunVec_ArgList <- list(
+      model = code$model, nodes = code$nodes,
+      includeData = TRUE, sortUnique = TRUE,
+      errorContext = errorContext
+    )
     # This goes with nodeFxnVector above: deprecate and error-trap
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
       if (!isCodeArgBlank(code, "nodes")) {
@@ -484,7 +502,7 @@ calculateDiff_keywordInfo <- keywordInfoClass(
     }
 
     nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
-    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    # nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
     addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
     if (!useNodeFunctionVectorByIndex) {
@@ -512,9 +530,11 @@ simulate_keywordInfo <- keywordInfoClass(
     }
     errorContext <- deparse(code)
 
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$nodes,
-                              includeData = code$includeData, sortUnique = TRUE,
-                              errorContext = errorContext)
+    nodeFunVec_ArgList <- list(
+      model = code$model, nodes = code$nodes,
+      includeData = code$includeData, sortUnique = TRUE,
+      errorContext = errorContext
+    )
 
     # This goes with nodeFxnVector above: deprecate and error-trap
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
@@ -545,7 +565,7 @@ simulate_keywordInfo <- keywordInfoClass(
     }
 
     nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
-    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    # nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
     addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
     if (!useNodeFunctionVectorByIndex) {
@@ -572,9 +592,11 @@ getLogProb_keywordInfo <- keywordInfoClass(
       return(code)
     }
     errorContext <- deparse(code)
-    nodeFunVec_ArgList <- list(model = code$model, nodes = code$nodes,
-                              includeData = TRUE, sortUnique = TRUE,
-                              errorContext = errorContext)
+    nodeFunVec_ArgList <- list(
+      model = code$model, nodes = code$nodes,
+      includeData = TRUE, sortUnique = TRUE,
+      errorContext = errorContext
+    )
     # This goes with nodeFxnVector above: deprecate and error-trap
     if (!isCodeArgBlank(code, "nodeFunctionIndex")) { ## new case: calculate(myNodeFunctionVector, nodeFunctionIndex = i), if myNodeFunctionVector was hand-created in setup code
       if (!isCodeArgBlank(code, "nodes")) {
@@ -604,7 +626,7 @@ getLogProb_keywordInfo <- keywordInfoClass(
     }
 
     nodeFunName <- nodeInstrList_SetupTemplate$makeSetupNames(nodeFunVec_ArgList)[1]
-    #nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
+    # nodeFunFieldName <- nodeInstrList_SetupTemplate$makeFieldName(nodeFunVec_ArgList)
     addNecessarySetupAndInitCode(nodeInstrList_SetupTemplate, nodeFunVec_ArgList, nfProc)
 
     if (!useNodeFunctionVectorByIndex) {
@@ -697,7 +719,7 @@ values_keywordInfo <- keywordInfoClass(
     )
     if (!useAccessorVectorByIndex) {
       newRunCode <- substitute(
-        getOrSetValues_(MCN),  # at the time of this writing, nCompiler's custom opDef support won't handle what we'd need for MCN$getOrSetValues().
+        getOrSetValues_(MCN), # at the time of this writing, nCompiler's custom opDef support won't handle what we'd need for MCN$getOrSetValues().
         list(MCN = as.name(multiCopierNames[1]))
       )
     } else {
@@ -722,10 +744,14 @@ nimCopy_keywordInfo <- keywordInfoClass(
     accessTypes <- c("symbolModelVariableAccessorVector", "symbolModelValuesAccessorVector")
     logProb <- if (is.null(code$logProb)) FALSE else code$logProb
     logProbOnly <- if (is.null(code$logProbOnly)) FALSE else code$logProbOnly
-    from_ArgList <- list(name = code$from, source = code$from, class = symTypeFromSymTab(code$from, nfProc$setupSymTab, options = possibleObjects),
-                         row = code$row, nodes = code$nodes, sourceType = NA, logProb = logProb, logProbOnly = logProbOnly)
-    to_ArgList <- list(name = code$to, source = code$to, class = symTypeFromSymTab(code$to, nfProc$setupSymTab, options = possibleObjects),
-                       row = code$rowTo, nodes = code$nodesTo, sourceType = NA, logProb = logProb, logProbOnly = logProbOnly)
+    from_ArgList <- list(
+      name = code$from, source = code$from, class = symTypeFromSymTab(code$from, nfProc$setupSymTab, options = possibleObjects),
+      row = code$row, nodes = code$nodes, sourceType = NA, logProb = logProb, logProbOnly = logProbOnly
+    )
+    to_ArgList <- list(
+      name = code$to, source = code$to, class = symTypeFromSymTab(code$to, nfProc$setupSymTab, options = possibleObjects),
+      row = code$rowTo, nodes = code$nodesTo, sourceType = NA, logProb = logProb, logProbOnly = logProbOnly
+    )
     if (is.null(from_ArgList$class)) {
       stop("Error in nimCopy: '", code$from, "' is not a recognized model or modelValues object.")
     }
@@ -734,7 +760,7 @@ nimCopy_keywordInfo <- keywordInfoClass(
     }
     if (from_ArgList$class %in% modelValuesTypes) {
       if (isCodeArgBlank(code, "row")) stop("row argument missing in copy call")
-      #from_ArgList$row <- code$row
+      # from_ArgList$row <- code$row
     }
     if (to_ArgList$class %in% modelValuesTypes) {
       if (isCodeArgBlank(code, "rowTo")) {
@@ -743,9 +769,9 @@ nimCopy_keywordInfo <- keywordInfoClass(
         } else {
           to_ArgList$row <- code$row
         }
-      } #else {
-        #to_ArgList$row <- code$rowTo
-      #}
+      } # else {
+      # to_ArgList$row <- code$rowTo
+      # }
     }
     # For a modelValues side, the model side (if any) is used to find logProb elements of nodes.
     logProbModel <- if (from_ArgList$class == "symbolModel") code$from else if (to_ArgList$class == "symbolModel") code$to else NULL
@@ -753,8 +779,10 @@ nimCopy_keywordInfo <- keywordInfoClass(
     if (isCodeArgBlank(code, "nodes")) {
       # No nodes means all variables of from (including or only logProb variables, per
       # logProb and logProbOnly), which then need no logProb expansion. See nimbleModel's nimCopy.R.
-      from_ArgList$nodes <- substitute(nimbleModel:::nimCopy_allVars(FROM, LOGPROB, LOGPROBONLY),
-                                       list(FROM = code$from, LOGPROB = logProb, LOGPROBONLY = logProbOnly))
+      from_ArgList$nodes <- substitute(
+        nimbleModel:::nimCopy_allVars(FROM, LOGPROB, LOGPROBONLY),
+        list(FROM = code$from, LOGPROB = logProb, LOGPROBONLY = logProbOnly)
+      )
       from_ArgList$logProb <- from_ArgList$logProbOnly <- FALSE
       # For the setup names (instead of the deparsed call).
       from_ArgList$nodesTag <- paste("allVars_LP", deparse(logProb), "LPO", deparse(logProbOnly), sep = "_")
@@ -788,7 +816,7 @@ nimCopy_keywordInfo <- keywordInfoClass(
     )
 
     runCode <- substitute(
-      nimCopy_(from = FROM, fromRow  = (FR)-1, to = TO, toRow = (TR)-1),
+      nimCopy_(from = FROM, fromRow = (FR) - 1, to = TO, toRow = (TR) - 1),
       list(
         # A model side has no row (it is ignored), so use 1 in case row or rowTo is blank.
         FROM = as.name(fromMultiCopierNames[1]), FR = if (from_ArgList$sourceType == "model") 1 else from_ArgList$row,
@@ -900,7 +928,7 @@ doubleBracket_keywordInfo <- keywordInfoClass(
       # nl_fieldName <- as.character(code[[3]])
       # newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = as.name(nl_charName), VARNAME = nl_fieldName))
       # return(newRunCode)
-      return (code)
+      return(code)
     }
     if (class == "symbolModel") {
       singleAccess_ArgList <- list(code = code, model = code[[2]], nodeExpr = code[[3]])
@@ -967,10 +995,15 @@ doubleBracket_keywordInfo <- keywordInfoClass(
         ## useMap <- nDim > 0
       } else {
         allNDims <- determineNdimsFromNfproc(singleAccess_ArgList$model, nodeArg, nfProc)
-        if (length(unique(allNDims)) > 1)
-          stop(paste0("Error for ", deparse(code),
-              ". Inconsistent numbers of dimensions for different instances."),
-               call. = FALSE)
+        if (length(unique(allNDims)) > 1) {
+          stop(
+            paste0(
+              "Error for ", deparse(code),
+              ". Inconsistent numbers of dimensions for different instances."
+            ),
+            call. = FALSE
+          )
+        }
         nDim <- allNDims[[1]]
         useMap <- nDim > 0
       }
@@ -982,10 +1015,10 @@ doubleBracket_keywordInfo <- keywordInfoClass(
       } else {
         newFields <- singleModelIndexAccess_SetupTemplate$makeFields(singleAccess_ArgList)
         accessName <- names(newFields)[1]
-        addNecessarySetupAndInitCode( singleModelIndexAccess_SetupTemplate, singleAccess_ArgList, nfProc)
+        addNecessarySetupAndInitCode(singleModelIndexAccess_SetupTemplate, singleAccess_ArgList, nfProc)
         # ans <- substitute(ACCESSNAME[MFLATINDEX], list(ACCESSNAME = as.name(accessName), MFLATINDEX = as.name(paste0(accessName, '_flatIndex'))))
         ans <- substitute(ACCESSNAME[1], list(ACCESSNAME = as.name(accessName))) # The index will become "1 - 1".
-        #ans <- makeSingleIndexAccessExpr(accessName, as.name(accessName))
+        # ans <- makeSingleIndexAccessExpr(accessName, as.name(accessName))
       }
       return(ans)
     }
@@ -1017,11 +1050,11 @@ dollarSign_keywordInfo <- keywordInfoClass(
   processor = function(code, nfProc, RCfunProc) {
     callerCode <- code[[2]]
     if (is.null(nfProc)) {
-      cat("caught a case where dollarSign keyword processor is called without nfProc.\n");
+      cat("caught a case where dollarSign keyword processor is called without nfProc.\n")
       browser()
-    #   nl_fieldName <- as.character(code[[3]])
-    #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
-    #   return(newRunCode)
+      #   nl_fieldName <- as.character(code[[3]])
+      #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
+      #   return(newRunCode)
     }
 
     doubleBracketCase <- FALSE
@@ -1048,22 +1081,22 @@ dollarSign_keywordInfo <- keywordInfoClass(
 
 
     if (is.null(class) || class == "NULL") { ## assume that an element of a run-time provided nimbleList is being accessed
-    #   nl_fieldName <- as.character(code[[3]])
-    #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
-    #   return(newRunCode)
+      #   nl_fieldName <- as.character(code[[3]])
+      #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
+      #   return(newRunCode)
       return(code)
     }
     # }
     if (class == "symbolNimbleFunctionList") {
-    #   nf_fieldName <- as.character(code[[3]])
-    #   newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
-    #   return(newRunCode)
+      #   nf_fieldName <- as.character(code[[3]])
+      #   newRunCode <- substitute(nfMethod(NIMBLEFXN, METHODNAME), list(NIMBLEFXN = callerCode, METHODNAME = nf_fieldName))
+      #   return(newRunCode)
       return(code)
     }
     if (class == "symbolModel") {
       singleAccess_ArgList <-
         list(code = code, model = callerCode, var = as.character(code[[3]]))
-      #accessName <-
+      # accessName <-
       #  singleVarAccess_SetupTemplate$makeName(singleAccess_ArgList)
       fields <-
         singleVarAccess_SetupTemplate$makeFields(singleAccess_ArgList)
@@ -1114,11 +1147,11 @@ dollarSign_keywordInfo <- keywordInfoClass(
       # }
     }
     if (class == "symbolNimbleList") {
-    #   # 	Code is of the form
-    #   #  myNimbleList$myVar
-    #   nl_fieldName <- as.character(code[[3]])
-    #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
-    #   return(newRunCode)
+      #   # 	Code is of the form
+      #   #  myNimbleList$myVar
+      #   nl_fieldName <- as.character(code[[3]])
+      #   newRunCode <- substitute(nfVar(NIMBLELIST, VARNAME), list(NIMBLELIST = callerCode, VARNAME = nl_fieldName))
+      #   return(newRunCode)
       return(code)
     }
     # if (class == "symbolNimbleFunctionList") {
@@ -1158,14 +1191,21 @@ singleBracket_keywordInfo <- keywordInfoClass(
       # need to find nDim
       nList_name <- names(fields)[1]
       # Next steps with instances could be separated and generalized.
-      varName <- if(is.character(code[[3]])) code[[3]]
-        else nfProc$intances[[1]][[as.character(code[[3]])]]
+      varName <- if (is.character(code[[3]])) {
+        code[[3]]
+      } else {
+        nfProc$intances[[1]][[as.character(code[[3]])]]
+      }
       nDim <- nfProc$instances[[1]][[as.character(code[[2]])]]$varInfo$vars[[varName]]$nDim
-      literal_part <- paste0( nList_name, "->access_at((", indexExpr, ")-1)")
+      literal_part <- paste0(nList_name, "->access_at((", indexExpr, ")-1)")
       # cppCode <- paste0("nAs(", nList_name, "->access_at(", indexExpr, "), double(", nDim, "))")
-      return(substitute(nAs(nCpp(LITERAL), double(NDIM)),
-                        list(LITERAL = literal_part,
-                             NDIM = nDim)))
+      return(substitute(
+        nAs(nCpp(LITERAL), double(NDIM)),
+        list(
+          LITERAL = literal_part,
+          NDIM = nDim
+        )
+      ))
     }
     return(code)
   }
@@ -1588,7 +1628,7 @@ processKeywordCodeMemberFun <- function(code, nfProc, RCfunProc) { ## handle cas
     symObj <- nfProc$setupSymTab$getSymbol(as.character(objectPart))
     if (is.null(symObj)) {
       return(code) # nimble errors out in this case, but we pass it through because it may be handled in more different ways.
-#      stop(paste0("In processKeywordCodeMemberFun: not sure what to do with ", deparse(code)))
+      #      stop(paste0("In processKeywordCodeMemberFun: not sure what to do with ", deparse(code)))
     }
     if (inherits(symObj, "symbolModel")) {
       isModel <- TRUE
@@ -1703,22 +1743,25 @@ multiCopier_setupCodeTemplate <- setupCodeTemplate(
     # For a modelValues source with logProb expansion, the model used for it is part of the name.
     usesModel <- identical(argList$sourceType, "modelValues") &&
       (isTRUE(argList$logProb) || isTRUE(argList$logProbOnly))
-    nameParts <- c(deparse(argList$source),
+    nameParts <- c(
+      deparse(argList$source),
       if (is.null(argList$nodesTag)) paste(deparse(argList$nodes), collapse = "") else argList$nodesTag,
       "multCopy_logProb",
       deparse(argList$logProb),
       "LPO", deparse(argList$logProbOnly),
       if (usesModel) c("model", deparse(argList$model)),
-      argList$roleTag)
-    c(Rname2CppName(paste(nameParts, collapse = "_")),
+      argList$roleTag
+    )
+    c(
+      Rname2CppName(paste(nameParts, collapse = "_")),
       as.character(argList$source)
-      )
+    )
   },
   initCodeTemplate = quote({
     cppLiteral(CODE)
   }),
   makeInitCodeSubList = function(fields, setupNames, argList, ...) {
-    code <- paste0(setupNames[1], "->init(",setupNames[2],");")
+    code <- paste0(setupNames[1], "->init(", setupNames[2], ");")
     list(
       CODE = code
     )
@@ -1740,7 +1783,8 @@ multiCopier_setupCodeTemplate <- setupCodeTemplate(
     sourceType = SOURCETYPE,
     logProb = LOGPROB,
     logProbOnly = LOGPROBONLY,
-    model = MODEL)),
+    model = MODEL
+  )),
   makeSetupCodeSubList = function(setupNames, argList, ...) {
     list(
       ACCESSNAME = as.name(setupNames[1]),
@@ -1857,7 +1901,7 @@ boundID_SetupTemplate <- setupCodeTemplate(
     ))
   },
   setupCodeTemplate = quote(
-    BOUNDIDNAME <- if(BOUND == "lower") 1 else if(BOUND == "upper") 2 else stop("bound must be either 'lower' or 'upper'.") # boundIDs as in nimbleModel
+    BOUNDIDNAME <- if (BOUND == "lower") 1 else if (BOUND == "upper") 2 else stop("bound must be either 'lower' or 'upper'.") # boundIDs as in nimbleModel
   ),
   makeSetupCodeSubList = function(setupNames, argList, ...) {
     list(
@@ -1877,11 +1921,10 @@ paramID_SetupTemplate <- setupCodeTemplate(
     ))
     list("integerScalar") |> setNames(fieldName)
   },
-  initCodeTemplate = quote( {
+  initCodeTemplate = quote({
     PARAMIDNAME <- MODEL$getParamID_impl(INSTRLISTNAME$instr_nList[[1]], PARAM)
-    }
-  ),
-  makeInitCodeSubList = function(fields, setupNames, argList, ...){
+  }),
+  makeInitCodeSubList = function(fields, setupNames, argList, ...) {
     list(
       PARAMIDNAME = as.name(names(fields)[1]),
       MODEL = argList$model,
@@ -1910,11 +1953,11 @@ nodeInstrList_SetupTemplate <- setupCodeTemplate(
     INSTRLISTNAME <- nimbleModel:::makeInstrList(
       model = MODEL,
       input = NODES,
-      #wrtNodes = WRTNODES,
+      # wrtNodes = WRTNODES,
       includeData = INCLUDEDATA
-      #,
-      #sortUnique = SORTUNIQUE,
-      #errorContext = ERRORCONTEXT
+      # ,
+      # sortUnique = SORTUNIQUE,
+      # errorContext = ERRORCONTEXT
     )
   ),
   makeSetupCodeSubList = function(setupNames, argList, ...) {
@@ -1922,11 +1965,11 @@ nodeInstrList_SetupTemplate <- setupCodeTemplate(
       INSTRLISTNAME = as.name(setupNames[1]),
       MODEL = argList$model,
       NODES = argList$nodes,
-      #WRTNODES = argList$wrtNodes,
+      # WRTNODES = argList$wrtNodes,
       INCLUDEDATA = argList$includeData
-      #,
-      #SORTUNIQUE = argList$sortUnique,
-      #ERRORCONTEXT = argList$errorContext
+      # ,
+      # SORTUNIQUE = argList$sortUnique,
+      # ERRORCONTEXT = argList$errorContext
     )
   }
 )
@@ -2156,27 +2199,29 @@ singleModelIndexAccess_SetupTemplate <- nimble2:::setupCodeTemplate(
       NODEVARNAME = argList$nodeExpr
     )
   },
-   makeFields = function(argList, ...) {
-     baseName <- makeID(argList, ...)
-     scalar_node_ptr_name <- paste0(baseName, "_nodePtr")
-#     inds_name <- paste0(baseName, "_inds")
-     newSym <- nimble2:::symbolDptr$new()
-#     list(newSym, "integerVector") |> setNames(c(scalar_node_ptr_name, inds_name))
-     list(newSym) |> setNames(c(scalar_node_ptr_name))
-   },
-   initCodeTemplate = quote({
-     nCpp(CODE)
-   }),
-   makeInitCodeSubList = function(fields, setupNames, argList, ...) {
-    SCALAR_NODE_PTR = names(fields)[1]
-    MODEL = argList$model |> deparse()
-    NODEVARNAME = setupNames[1]
-    INDS = setupNames[3]
-    code <- paste0(SCALAR_NODE_PTR,
+  makeFields = function(argList, ...) {
+    baseName <- makeID(argList, ...)
+    scalar_node_ptr_name <- paste0(baseName, "_nodePtr")
+    #     inds_name <- paste0(baseName, "_inds")
+    newSym <- nimble2:::symbolDptr$new()
+    #     list(newSym, "integerVector") |> setNames(c(scalar_node_ptr_name, inds_name))
+    list(newSym) |> setNames(c(scalar_node_ptr_name))
+  },
+  initCodeTemplate = quote({
+    nCpp(CODE)
+  }),
+  makeInitCodeSubList = function(fields, setupNames, argList, ...) {
+    SCALAR_NODE_PTR <- names(fields)[1]
+    MODEL <- argList$model |> deparse()
+    NODEVARNAME <- setupNames[1]
+    INDS <- setupNames[3]
+    code <- paste0(
+      SCALAR_NODE_PTR,
       " = make_scalarFieldPtr(", MODEL, ", ",
-      NODEVARNAME, ", ", INDS, ", true)") # true says to substract ones from the R indices.
+      NODEVARNAME, ", ", INDS, ", true)"
+    ) # true says to substract ones from the R indices.
     list(CODE = code)
-   }
+  }
 )
 
 map_SetupTemplate <- nimble2:::setupCodeTemplate(
@@ -2187,7 +2232,7 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
   makeSetupNames = function(argList, ...) {
     nodeIsLiteral <- isTRUE(argList$nodeIsLiteral)
     baseName <- makeID(argList, ...)
-    varName <- if(nodeIsLiteral) NULL else paste0(baseName, "_varName")
+    varName <- if (nodeIsLiteral) NULL else paste0(baseName, "_varName")
     modelName <- deparse(argList$model) # force retaining it since it will only appear in nCpp and so not be found by all.names().
     indsName <- paste0(baseName, "_inds")
     c(varName = varName, modelName = modelName, indsName = indsName)
@@ -2196,8 +2241,8 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
     VARANDINDICES <- nimble2:::getVarAndIndices(NODEVARNAME)
     VARNAME_EXPR
     INDSNAME <- VARANDINDICES$indices |>
-     nimble2:::indicesList2matrix() |>
-     nimble2:::setNimType(list(nDim = 2, type = "integer"))
+      nimble2:::indicesList2matrix() |>
+      nimble2:::setNimType(list(nDim = 2, type = "integer"))
     NULL
   }),
   makeSetupCodeSubList = function(setupNames, argList, ...) {
@@ -2209,17 +2254,19 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
       INDSNAME = as.name(setupNames["indsName"]),
       NODEVARNAME = argList$nodeExpr
     )
-    if(!nodeIsLiteral) {
+    if (!nodeIsLiteral) {
       subList$VARNAME_EXPR <-
-      substitute(VARNAME <- as.character(VARANDINDICES$varName),
-        c(subList, list(VARNAME = as.name(setupNames["varName"]))))
+        substitute(
+          VARNAME <- as.character(VARANDINDICES$varName),
+          c(subList, list(VARNAME = as.name(setupNames["varName"])))
+        )
     }
     subList
   },
   makeFields = function(argList, ...) {
     baseName <- makeID(argList, ...)
     STMname <- paste0(baseName, "_STM")
-    newSym <- nCompiler:::type2symbol(double(nDim = argList$nDim, isBlockRef=TRUE, interface=FALSE))
+    newSym <- nCompiler:::type2symbol(double(nDim = argList$nDim, isBlockRef = TRUE, interface = FALSE))
     list(newSym) |> setNames(c(STMname))
   },
   initCodeTemplate = quote({
@@ -2230,16 +2277,19 @@ map_SetupTemplate <- nimble2:::setupCodeTemplate(
     MODEL <- setupNames["modelName"]
     # NODEVARNAME <- setupNames["varName"]
     nodeIsLiteral <- isTRUE(argList$nodeIsLiteral)
-    NODEVARNAME <- if(nodeIsLiteral)
+    NODEVARNAME <- if (nodeIsLiteral) {
       paste0("\"", nimble2:::getVarAndIndices(argList$nodeExpr)$varName, "\"")
-      else setupNames["varName"]
-    INDS = setupNames["indsName"]
+    } else {
+      setupNames["varName"]
+    }
+    INDS <- setupNames["indsName"]
     code <- paste0(
       "rebind_fieldSTM(",
       STM, ", ",
       MODEL, ", ",
       NODEVARNAME, ", ",
-      INDS, ", true)") # true says to substract ones from the R indices.
+      INDS, ", true)"
+    ) # true says to substract ones from the R indices.
     list(CODE = code)
   }
 )
@@ -2266,10 +2316,11 @@ singleModelValuesAccessor_SetupTemplate <- nimble2:::setupCodeTemplate(
     nListBase_obj_name <- names(fields)[1]
     mvName <- as.character(argList$modelValues)
     varName <- argList$var
-    if(is.character(varName)) {
+    if (is.character(varName)) {
       varName <- paste0("\"", varName, "\"")
-    } else
+    } else {
       varName <- as.character(varName)
+    }
 
     code <- paste0(
       nListBase_obj_name,
@@ -2277,7 +2328,8 @@ singleModelValuesAccessor_SetupTemplate <- nimble2:::setupCodeTemplate(
       mvName,
       "->get_interface_ptr(",
       varName,
-      "))")
+      "))"
+    )
     list(CODE = code)
   }
 )
@@ -2366,7 +2418,7 @@ isCodeArgBlank <- function(code, arg) {
 # Utility functions to make things a little neater
 isKeywordCaseHandled <- function(template, argList, nfProc) {
   uniqueID <- template$makeID(argList)
-  if(is.null(uniqueID)) {
+  if (is.null(uniqueID)) {
     stop("In isKeywordCaseHandled, template$makeID returned NULL.")
   }
   uniqueID %in% nfProc$keywordCaseIDs
@@ -2395,29 +2447,37 @@ addNecessarySetupAndInitCode <- function(
   template, argList,
   nfProc, allowToCpp = TRUE
 ) {
-  if (is.null(nfProc))
+  if (is.null(nfProc)) {
     stop("Trying to add setup code for a nimbleFunction with no setup code.")
+  }
   if (!isKeywordCaseHandled(template, argList, nfProc)) {
     uniqueID <- template$makeID(argList)
     newSetupNames <- template$makeSetupNames(argList)
     nfProc$newSetupOutputNames <- c(newSetupNames, nfProc$newSetupOutputNames)
-    if(!is.null(template$setupCodeTemplate)) {
+    if (!is.null(template$setupCodeTemplate)) {
       subList <- template$makeSetupCodeSubList(newSetupNames, argList)
       nfProc$newSetupCode[[uniqueID]] <-
-        eval(substitute(substitute(TEMPLATE, subList),
-            list(TEMPLATE = template$setupCodeTemplate)))
+        eval(substitute(
+          substitute(TEMPLATE, subList),
+          list(TEMPLATE = template$setupCodeTemplate)
+        ))
       # allowToCpp feature may become unnecessary.
-      if(!allowToCpp)
-        nfProc$blockFromCppNames <- c(newSetupNames[1],
-                                      nfProc$blockFromCppNames)
+      if (!allowToCpp) {
+        nfProc$blockFromCppNames <- c(
+          newSetupNames[1],
+          nfProc$blockFromCppNames
+        )
+      }
     }
     newFields <- template$makeFields(argList)
     nfProc$newFields <- c(newFields, nfProc$newFields)
     if (!is.null(template$initCodeTemplate)) {
       subList <- template$makeInitCodeSubList(newFields, newSetupNames, argList)
-        nfProc$newInitCode[[uniqueID]] <-
-          eval(substitute(substitute(TEMPLATE, subList),
-                list(TEMPLATE = template$initCodeTemplate)))
+      nfProc$newInitCode[[uniqueID]] <-
+        eval(substitute(
+          substitute(TEMPLATE, subList),
+          list(TEMPLATE = template$initCodeTemplate)
+        ))
     }
     nfProc$keywordCaseIDs <- c(uniqueID, nfProc$keywordCaseIDs)
   }

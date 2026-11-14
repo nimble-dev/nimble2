@@ -37,18 +37,22 @@ getOrSetValues_LAT_impl <- function(code, symTab, auxEnv, info) {
   # arguably it would be a cleaner use of compilation steps to only set
   # type here and then choose method code in the cpp output step.
   copiersName <- as.name(code$args[[1]]$name)
-  if(isTRUE(auxEnv$onLHS)) {
+  if (isTRUE(auxEnv$onLHS)) {
     # setValues_() refreshes the data pointers and returns a proxy whose operator= does the copy.
     new_code <- substitute(
       M(COPIERS, "setValues_"),
-      list(M = as.name("->method"),
-           COPIERS = copiersName)
+      list(
+        M = as.name("->method"),
+        COPIERS = copiersName
+      )
     )
   } else {
     new_code <- substitute(
       M(COPIERS, "getValues"),
-      list(M = as.name("->method"),
-           COPIERS = copiersName)
+      list(
+        M = as.name("->method"),
+        COPIERS = copiersName
+      )
     )
   }
   new_expr <- nCompiler::nParse(new_code)
@@ -64,7 +68,7 @@ getOrSetValues_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
   # setValues_raw_(i) or setValues_scalar_(i), which return proxies whose operator= does the copy.
   modeArg <- code$args[[3]] # This should really be a compileArg, but it is only placed through internal (keyword) processing, so not an issue.
   if (!(isTRUE(modeArg$isLiteral) && is.character(modeArg$name) &&
-        modeArg$name %in% c("raw", "scalar"))) {
+    modeArg$name %in% c("raw", "scalar"))) {
     stop("In getOrSetValues_indexed_, mode must be a literal \"raw\" or \"scalar\".")
   }
   onLHS <- isTRUE(auxEnv$onLHS)
@@ -72,7 +76,8 @@ getOrSetValues_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
   auxEnv$onLHS <- FALSE
   on.exit(auxEnv$onLHS <- onLHS)
   inserts <- nCompiler:::labelAbstractTypesEnv$recurse_labelAbstractTypes(
-    code, symTab, auxEnv, info, useArgs = c(FALSE, TRUE, FALSE)
+    code, symTab, auxEnv, info,
+    useArgs = c(FALSE, TRUE, FALSE)
   )
   auxEnv$onLHS <- onLHS
   on.exit(NULL)
@@ -80,10 +85,12 @@ getOrSetValues_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
   iExpr <- nCompiler:::removeArg(code, 2)
   new_code <- substitute(
     M(COPIERS, METHOD, I),
-    list(M = as.name("->method"),
-         COPIERS = as.name(code$args[[1]]$name),
-         METHOD = method,
-         I = 0L) # placeholder for the labeled index expression
+    list(
+      M = as.name("->method"),
+      COPIERS = as.name(code$args[[1]]$name),
+      METHOD = method,
+      I = 0L
+    ) # placeholder for the labeled index expression
   )
   new_expr <- nCompiler::nParse(new_code)
   nCompiler:::setArg(new_expr, 3, iExpr)
@@ -101,7 +108,8 @@ model_values_indexed_LAT_impl <- function(code, symTab, auxEnv, info) {
   # Label the index as an ordinary (RHS) expression, even when the values() call is on the LHS.
   auxEnv$onLHS <- FALSE
   inserts <- nCompiler:::labelAbstractTypesEnv$recurse_labelAbstractTypes(
-    code, symTab, auxEnv, info, useArgs = c(FALSE, FALSE, TRUE)
+    code, symTab, auxEnv, info,
+    useArgs = c(FALSE, FALSE, TRUE)
   )
   auxEnv$onLHS <- onLHS
   iExpr <- nCompiler:::removeArg(code, 3)
@@ -139,11 +147,15 @@ model_values_nodes_LAT_impl <- function(code, symTab, auxEnv, info) {
   modelName <- as.name(code$args[[1]]$name)
   instrListName <- as.name(code$args[[2]]$name)
   if (onLHS) {
-    new_code <- substitute(setValues_nodes_(MODEL, INSTRLIST),
-                           list(MODEL = modelName, INSTRLIST = instrListName))
+    new_code <- substitute(
+      setValues_nodes_(MODEL, INSTRLIST),
+      list(MODEL = modelName, INSTRLIST = instrListName)
+    )
   } else {
-    new_code <- substitute(M(MODEL, "getValues_nodes_impl", INSTRLIST),
-                           list(M = as.name("->method"), MODEL = modelName, INSTRLIST = instrListName))
+    new_code <- substitute(
+      M(MODEL, "getValues_nodes_impl", INSTRLIST),
+      list(M = as.name("->method"), MODEL = modelName, INSTRLIST = instrListName)
+    )
   }
   new_expr <- nCompiler::nParse(new_code)
   nCompiler:::replaceArgInCaller(code, new_expr)
@@ -172,19 +184,20 @@ getOrSetValues_LAT <- function(code, symTab, auxEnv, info) {
 MethodCall_LAT_impl <- function(code, symTab, auxEnv, info) {
   # nCompiler parses A$foo(x) to MethodCall(A, foo(x)).
   # We intercept nimbleListGen$new(...) and otherwise defer to nCompiler's MethodCall handler.
-  # This replaces nimble's keyword processing of nimbleListGen$new(...), 
+  # This replaces nimble's keyword processing of nimbleListGen$new(...),
   # (temporarily, only during compileNimble), and it uses nCompiler's
   # scoping to find the nimbleList generator.
   #
   # The work is done by modifying the AST (code) in place.
   LATenv <- nCompiler:::labelAbstractTypesEnv
-  if(code$args[[2]]$name == "new" && code$args[[1]]$isName) {
+  if (code$args[[2]]$name == "new" && code$args[[1]]$isName) {
     # Label the type of A (but not new(...)) to see if A is a nimbleList generator.
     # Labeling a name does not create inserts.
     LATenv$recurse_labelAbstractTypes(code, symTab, auxEnv, info,
-                                      useArgs = c(TRUE, FALSE))
+      useArgs = c(TRUE, FALSE)
+    )
     objType <- code$args[[1]]$type
-    if(inherits(objType, "symbolNCgenerator") && is.nlGenerator(objType$NCgenerator)) {
+    if (inherits(objType, "symbolNCgenerator") && is.nlGenerator(objType$NCgenerator)) {
       newNimbleList_LAT(code, symTab, auxEnv, info)
       return(NULL)
     }
@@ -208,11 +221,13 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
 
   NC_info <- nCompiler:::register_known_nClass(NCgen, project_env = auxEnv$project_env)
 
-  returnSym <- nCompiler:::symbolNC$new(name = '',
-                            type = code$args[[1]]$type$name,
-                            isArg = FALSE,
-                            overloadDefs = NC_info$inheritInfo$overloadDefs,
-                            NCgenerator = NCgen)
+  returnSym <- nCompiler:::symbolNC$new(
+    name = "",
+    type = code$args[[1]]$type$name,
+    isArg = FALSE,
+    overloadDefs = NC_info$inheritInfo$overloadDefs,
+    NCgenerator = NCgen
+  )
 
   # 1. Match the arguments of new(...) to the nimbleList fields.
   #    This names any positional arguments and catches unknown field names.
@@ -228,45 +243,52 @@ newNimbleList_LAT <- function(code, symTab, auxEnv, info) {
   numSetterLines <- length(newCode$args)
   setterVarNames <- names(newCode$args)
   setterArgs <- vector("list", length = numSetterLines)
-  for(i in rev(seq_len(numSetterLines))) {
+  for (i in rev(seq_len(numSetterLines))) {
     setterArgs[[i]] <- nCompiler:::removeArg(newCode, i)
   }
   nCompiler:::removeArg(code, 2) # new(...)
   nCompiler:::removeArg(code, 1) # the listDef
-  code$name <- 'construct_new_nClass'
+  code$name <- "construct_new_nClass"
   code$aux$cpp_classname <- classname
   code$type <- returnSym
   newCode <- code
 
   # 3. Build a lambda function
   lambdaCodeOp <- nCompiler:::nParse(quote(chainedCall(LambdaFun_(decl, def))))
-  #.   Place it in the AST in place of construct_new_nClass()
+  # .   Place it in the AST in place of construct_new_nClass()
   nCompiler:::replaceArgInCaller(newCode, lambdaCodeOp)
   lambdaCodeOp$type <- returnSym
 
   # Set the decl argument to a lambda function opening string
   lambdaCode <- lambdaCodeOp$args[[1]]
-  lambdaDecl <- nCompiler:::nParse(as.name(paste0('[&]()')))
+  lambdaDecl <- nCompiler:::nParse(as.name(paste0("[&]()")))
   nCompiler:::setArg(lambdaCode, 1, lambdaDecl)
-  
+
   tempName <- as.name(nimble2:::intermediateLabelMaker())
   # Set the body to create the new object, using the
-  #. construct_new_nClass() piece from above
-  lambdaBody <- nCompiler:::nParse(substitute({TEMP <- dummy; return(TEMP)}, 
-                                              list(TEMP = tempName)))
- # lambdaBody <- nCompiler:::nParse(quote(return(dummy)))
+  # . construct_new_nClass() piece from above
+  lambdaBody <- nCompiler:::nParse(substitute(
+    {
+      TEMP <- dummy
+      return(TEMP)
+    },
+    list(TEMP = tempName)
+  ))
+  # lambdaBody <- nCompiler:::nParse(quote(return(dummy)))
   nCompiler:::setArg(lambdaBody$args[[1]], 2, newCode)
   # Add additional lines for any setting:
-  if(numSetterLines) {
-    for(i in 1:numSetterLines) {
-      newLine <- substitute(TEMP$V <- value, 
-                            list(TEMP = tempName, V = as.name(setterVarNames[i])))
+  if (numSetterLines) {
+    for (i in 1:numSetterLines) {
+      newLine <- substitute(
+        TEMP$V <- value,
+        list(TEMP = tempName, V = as.name(setterVarNames[i]))
+      )
       newLine <- nCompiler:::nParse(newLine)
       nCompiler:::setArg(newLine, 2, setterArgs[[i]])
       nCompiler:::insertArg(lambdaBody, 2, newLine)
     }
   }
-  
+
   # process the body. Since it is a `{`, any inserts would be attached to its lines, not returned.
   nCompiler:::compile_labelAbstractTypes(lambdaBody, symTab, auxEnv)
   # put the body in place in the lambda fun call.
@@ -299,31 +321,48 @@ nimble_nCompiler_opDefs <- list(
   model_getLogProb_indexed = list(matchDef = function(model, instrList, i) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getParam_indexed = list(matchDef = function(model, instrList, i, paramID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
   model_getBound_indexed = list(matchDef = function(model, instrList, i, boundID) {}, simpleTransformations = list(handler = make_model_calls_methods)),
-  getOrSetValues_ = list(matchDef = function(multiCopier) {},
-    labelAbstractTypes = list(handler = getOrSetValues_LAT)),
-  getOrSetValues_indexed_ = list(matchDef = function(multiCopier, i, mode) {},
-    labelAbstractTypes = list(handler = getOrSetValues_indexed_LAT)),
-  model_values_indexed_ = list(matchDef = function(model, instrList, i) {},
-    labelAbstractTypes = list(handler = model_values_indexed_LAT)),
+  getOrSetValues_ = list(
+    matchDef = function(multiCopier) {},
+    labelAbstractTypes = list(handler = getOrSetValues_LAT)
+  ),
+  getOrSetValues_indexed_ = list(
+    matchDef = function(multiCopier, i, mode) {},
+    labelAbstractTypes = list(handler = getOrSetValues_indexed_LAT)
+  ),
+  model_values_indexed_ = list(
+    matchDef = function(model, instrList, i) {},
+    labelAbstractTypes = list(handler = model_values_indexed_LAT)
+  ),
   # A C++ template function in nimbleModel's modelClass_.h, emitted by model_values_indexed_LAT.
   setValues_indexed_ = list(
     matchDef = function(model, instrList, i) {},
-    labelAbstractTypes = list(handler = "custom_call",
-                              recurse = TRUE,
-                              returnType = "numericVector")),
-  model_values_nodes_ = list(matchDef = function(model, instrList) {},
-    labelAbstractTypes = list(handler = model_values_nodes_LAT)),
+    labelAbstractTypes = list(
+      handler = "custom_call",
+      recurse = TRUE,
+      returnType = "numericVector"
+    )
+  ),
+  model_values_nodes_ = list(
+    matchDef = function(model, instrList) {},
+    labelAbstractTypes = list(handler = model_values_nodes_LAT)
+  ),
   # A C++ template function in nimbleModel's modelClass_.h, emitted by model_values_nodes_LAT.
   setValues_nodes_ = list(
     matchDef = function(model, instrList) {},
-    labelAbstractTypes = list(handler = "custom_call",
-                              recurse = TRUE,
-                              returnType = "numericVector")),
+    labelAbstractTypes = list(
+      handler = "custom_call",
+      recurse = TRUE,
+      returnType = "numericVector"
+    )
+  ),
   nimCopy_ = list(
     matchDef = function(from, fromRow, to, toRow) {},
-    labelAbstractTypes = list(handler = "custom_call",
-                              recurse = TRUE,
-                              returnType = nCompiler:::symbolVoid$new())),
+    labelAbstractTypes = list(
+      handler = "custom_call",
+      recurse = TRUE,
+      returnType = nCompiler:::symbolVoid$new()
+    )
+  ),
   # Registered with modify = TRUE (the default), so only the labelAbstractTypes
   # handler is replaced and nCompiler's cppOutput handler is kept.
   MethodCall = list(labelAbstractTypes = list(handler = MethodCall_LAT))
@@ -487,8 +526,8 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
     for (i in whichUnits) if (names(units)[i] != "") names(ans)[i] <- names(units)[i]
   }
 
-  nlUnits <- unitTypes == 'nl'
-  if(sum(nlUnits) > 0) {
+  nlUnits <- unitTypes == "nl"
+  if (sum(nlUnits) > 0) {
     # In nimble it superficially looks like nimbleLists are supported as
     # objects for compilation, but actually that was never fully built out
     # and results in an error.
@@ -497,7 +536,7 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
     # for (i in whichUnits) {
     #   ans[[i]] <- project$nimbleList_add(units[[i]], control = control)
     #   if (names(units)[i] != "") names(ans)[i] <- names(units)[i]
-    # }  
+    # }
   }
   # From here we are ready to:
   # Have the project create the nfProcs
@@ -515,9 +554,12 @@ compileNimble <- function(..., project, dirName = NULL, projectName = "",
   nCompile_results <- list()
   if (length(nComp_units)) {
     nCompiler::registerOpDef(nimble_nCompiler_opDefs)
-    on.exit({
-      nCompiler::deregisterOpDef(ls(nimble_nCompiler_opDefs))
-    }, add = TRUE)
+    on.exit(
+      {
+        nCompiler::deregisterOpDef(ls(nimble_nCompiler_opDefs))
+      },
+      add = TRUE
+    )
     nCompile_results <- do.call(nCompiler::nCompile, c(nComp_units, list(returnList = TRUE)))
   }
 

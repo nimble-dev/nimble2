@@ -15,12 +15,12 @@ BROWSE_COMPILE_NIMBLE <- FALSE
 # scenario 1: nimbleList def and object created in setup code. Not used as a type.
 test_that("nimbleList works: scenario 1", {
   nlTestFunc <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
       newList <- testListDef$new()
       newList$nlVector <- 1:3
     },
-    run = function(){
+    run = function() {
       returnType(numericVector())
       return(newList$nlVector)
     }
@@ -29,18 +29,19 @@ test_that("nimbleList works: scenario 1", {
 
   comp <- compileNimble(obj)
   expect_equal(comp$run(), 1:3)
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })
 
 # scenario 2: nimbleList object created in setup code from outside def. Used as returnType.
 test_that("nimbleList works: scenario2", {
   testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
   nlTestFunc <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       newList <- testListDef$new()
       newList$nlVector <- 1:3
     },
-    run = function(){
+    run = function() {
       returnType(testListDef())
       return(newList)
     }
@@ -50,7 +51,8 @@ test_that("nimbleList works: scenario2", {
   comp <- compileNimble(obj)
   expect_equal(comp$run()$nlVector, 1:3)
   rm(testListDef)
-  rm(comp); gc()
+  rm(comp)
+  gc()
 })
 
 # scenario 3: nimbleList object created in setup code from def created in setup code.
@@ -58,11 +60,11 @@ test_that("nimbleList works: scenario2", {
 
 test_that("nimbleList works: scenario 3", {
   nlTestFunc <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
       v <- 4:6
     },
-    run = function(){
+    run = function() {
       newList <- testListDef$new()
       newList2 <- testListDef$new(nlScalar = sum(v))
       newList$nlVector <- 1:3
@@ -81,10 +83,10 @@ test_that("nimbleList works: scenario 3", {
 test_that("nimbleList works: scenario 4", {
   testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
   nlTestFunc <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       v <- 4:6
     },
-    run = function(){
+    run = function() {
       newList <- testListDef$new()
       newList2 <- testListDef$new(nlScalar = sum(v))
       newList$nlVector <- 1:3
@@ -106,7 +108,7 @@ test_that("nimbleList works: scenario 5", {
   testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
   nlTestFunc <- nimbleFunction(
     run = function(x = double(0)) {
-      newList <- testListDef$new(nlVector = c(x, 2*x), nlScalar = x + 1)
+      newList <- testListDef$new(nlVector = c(x, 2 * x), nlScalar = x + 1)
       newList2 <- testListDef$new(newList$nlScalar, newList$nlVector)
       returnType(testListDef())
       return(newList2)
@@ -123,16 +125,16 @@ test_that("nimbleList works: scenario 6", {
   testListDef <- nimbleList(nlScalar = double(0), nlVector = double(1))
   makeList <- nimbleFunction(
     run = function(x = double(0)) {
-      newList <- testListDef$new(nlScalar = x, nlVector = c(x, 2*x))
+      newList <- testListDef$new(nlScalar = x, nlVector = c(x, 2 * x))
       returnType(testListDef())
       return(newList)
     }
   )
   nlTestFunc <- nimbleFunction(
-    setup = function(){
+    setup = function() {
       v <- 4:6
     },
-    run = function(){
+    run = function() {
       returnType(testListDef())
       return(makeList(sum(v)))
     }

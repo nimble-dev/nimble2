@@ -9,9 +9,10 @@
 # line 509: warning message expectation is updated for nimble2. This is a final change.
 
 source(system.file(file.path("tests", "testthat", "test_utils.R"),
-                   package = "nimble2"))
+  package = "nimble2"
+))
 # Tests copied from nimble run with legacy_nimble = TRUE, so nimble2 follows nimble's behavior where they differ.
-legacyNimbleSetting <- nimbleOptions('legacy_nimble')
+legacyNimbleSetting <- nimbleOptions("legacy_nimble")
 nimbleOptions(legacy_nimble = TRUE)
 on.exit(nimbleOptions(legacy_nimble = legacyNimbleSetting), add = TRUE)
 
@@ -328,8 +329,8 @@ test_that("Test of detection of nf methods in findMethods", {
   })
   # This test is modified to use
   # findMethodsInRcode
-  #expr <- nimble:::RparseTree2ExprClasses(code)
-  #expect_identical(nimble:::findMethodsInExprClass(expr), c("cc2", "cc3", "cc6", "cc7", "cc9", "cc10", "cc12", "cc13", "cc15", "cc17", "cc16"))
+  # expr <- nimble:::RparseTree2ExprClasses(code)
+  # expect_identical(nimble:::findMethodsInExprClass(expr), c("cc2", "cc3", "cc6", "cc7", "cc9", "cc10", "cc12", "cc13", "cc15", "cc17", "cc16"))
   expect_identical(
     nimble2:::findMethodsInRcode(code),
     c("cc2", "cc3", "cc6", "cc7", "cc9", "cc10", "cc12", "cc13", "cc15", "cc17", "cc16")
@@ -372,7 +373,7 @@ test_that("Test of detection of nf methods in findMethods", {
 # ## In nimble2 it is supported, so this test is disabled.
 #
 test_that("Test of error trapping for reduction functions", {
-    # nf <- nimbleFunction(
+  # nf <- nimbleFunction(
   #   run = function(x = double(0)) {
   #     returnType(double())
   #     y <- mean(x)
@@ -523,7 +524,7 @@ test_that("Missing variables in nf code cause error (not warning)", {
       returnType(double(0))
     }
   )
-  #expect_error(compileNimble(test1), "is not available")
+  # expect_error(compileNimble(test1), "is not available")
   expect_error(compileNimble(test1), "has not been created yet")
 
   test2 <- nimbleFunction(

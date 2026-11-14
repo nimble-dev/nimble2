@@ -16,23 +16,22 @@ test_that("attribute nimble_type works", {
   currOpt <- getNimbleOption("deduceTypeFromFirstInstanceOnly")
   on.exit(nimble2:::setNimbleOption("deduceTypeFromFirstInstanceOnly", currOpt))
 
-  for(nopt in c(FALSE, TRUE)) {
+  for (nopt in c(FALSE, TRUE)) {
     nimble2:::setNimbleOption("deduceTypeFromFirstInstanceOnly", nopt)
 
     foo <- nimbleFunction(
-      setup = function( ) {
+      setup = function() {
         xDv_s <- 1:2 |> setNimType(list(nDim = 0)) # set up for an err, because a vector was provided so it can't be nDim=0
         setupOutputs(xDv_s)
       },
-      run = function() {
-      },
-      check=FALSE
+      run = function() {},
+      check = FALSE
     )
     foo1 <- foo()
     expect_error(cfoo1 <- compileNimble(foo1))
 
     foo <- nimbleFunction(
-      setup = function( ) {
+      setup = function() {
         xDs <- 1 # N.B. A solo 1 induces double
         xIs <- 1L
         xDv <- 1.1:2.2 # N.B. 1:2 induces integer
@@ -42,12 +41,13 @@ test_that("attribute nimble_type works", {
         xDs_vI <- 1 |> setNimType(list(nDim = 1, type = "integer"))
         xDv_vI <- 1.1:2.2 |> setNimType(list(type = "integer"))
 
-        setupOutputs(xDs, xIs, xDv, xIv,
-                     xDs_v, xDs_vI, xDv_vI)
+        setupOutputs(
+          xDs, xIs, xDv, xIv,
+          xDs_v, xDs_vI, xDv_vI
+        )
       },
-      run = function() {
-      },
-      check=FALSE
+      run = function() {},
+      check = FALSE
     )
     foo1 <- foo()
 
@@ -75,7 +75,8 @@ test_that("attribute nimble_type works", {
     cfoo1$xDv_vI <- c(2.3, 3.4)
     expect_equal(cfoo1$xDv_vI, c(2, 3)) # vector integer by declaration
 
-    rm(cfoo1); gc()
+    rm(cfoo1)
+    gc()
   }
   nimble2:::setNimbleOption("deduceTypeFromFirstInstanceOnly", currOpt)
 })
