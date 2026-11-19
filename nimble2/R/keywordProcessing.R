@@ -1485,7 +1485,7 @@ keywordListModelMemberFuns[["getBound"]] <- modelMemberFun_keywordInfo
 
 
 matchFunctions <- new.env()
-matchFunctions[["setSize"]] <- function(var, ..., copy = TRUE, fillZeros = TRUE) {}
+matchFunctions[["setSize"]] <- function(obj, ..., copy = TRUE, fillZeros = TRUE) {}
 # matchFunctions[["nimC"]] <- nimC
 matchFunctions[["nimRep"]] <- function(x, times = 1, length.out, each = 1) {}
 # matchFunctions[["nimSeq"]] <- nimSeq
